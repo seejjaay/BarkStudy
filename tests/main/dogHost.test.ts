@@ -240,6 +240,17 @@ describe('dog host', () => {
     throw new Error('no seed produced a walking dog');
   });
 
+  it('with roaming off the dog never walks on its own', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const { host, advance } = setup(seed);
+      host.setRoaming(false);
+      host.setWorld([], [D1]);
+      advance(5000);
+      expect(host.body().x).toBe(768);
+      host.dispose();
+    }
+  });
+
   it('placeOn anchors to that window and returns false for an unknown id', () => {
     const { host } = setup();
     host.setWorld([win(1, 100)], [D1]);

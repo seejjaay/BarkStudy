@@ -39,6 +39,8 @@ export interface DogHost {
   /** The tracker failed: ignore windows from now on and roam the display edges. */
   setTrackerDown: () => void;
   setReducedMotion: (on: boolean) => void;
+  /** Debug/e2e: with roaming off the dog only sits, so tests are not disturbed by random walks. */
+  setRoaming: (on: boolean) => void;
   /** Debug/e2e: stand the dog on that window's widest visible top edge. */
   placeOn: (windowId: number) => boolean;
   readonly mode: 'tracking' | 'edge-roaming';
@@ -64,6 +66,7 @@ export function createDogHost(opts: { seed: number; sink: FrameSink; clock?: Clo
   let roam: RoamState = { walk: 0, untilMs: 0 };
   let rng: RngState = createRng(opts.seed);
   let reducedMotion = false;
+  let roaming = true;
   let timer: unknown = null;
   let lastTick = clock.now();
   let settleUntil = 0;
@@ -87,9 +90,11 @@ export function createDogHost(opts: { seed: number; sink: FrameSink; clock?: Clo
     const dt = now - lastTick;
     lastTick = now;
     if (!body) return;
-    const [nextRoam, nextRng] = roamStep(roam, now, edgeContact(body, platforms), rng);
-    roam = nextRoam;
-    rng = nextRng;
+    if (roaming) {
+      const [nextRoam, nextRng] = roamStep(roam, now, edgeContact(body, platforms), rng);
+      roam = nextRoam;
+      rng = nextRng;
+    }
     const walk = body.anchor ? roam.walk : 0;
     body = stepDog(body, platforms, displays, dt, walk, reducedMotion ? REDUCED_WALK_SPEED : WALK_SPEED);
     if (body.anchor) lastDisplayId = body.anchor.displayId;
@@ -179,6 +184,13 @@ export function createDogHost(opts: { seed: number; sink: FrameSink; clock?: Clo
     },
     setReducedMotion(on) {
       reducedMotion = on;
+      settleUntil = clock.now() + SETTLE_MS;
+      schedule();
+    },
+    setRoaming(on) {
+      roaming = on;
+      if (!on) roam = { walk: 0, untilMs: Infinity };
+      else roam = { walk: 0, untilMs: 0 };
       settleUntil = clock.now() + SETTLE_MS;
       schedule();
     },

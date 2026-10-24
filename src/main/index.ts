@@ -3,6 +3,7 @@ import { app, globalShortcut, ipcMain, screen, session, systemPreferences, type 
 import type { DisplayInfo, RawWindow } from '../shared/geometry';
 import { toDipWindows } from '../shared/geometry';
 import { IPC } from '../shared/ipc';
+import { installDebug } from './debug';
 import { createDogHost } from './dogHost';
 import { hardenWebContents, installNetworkGuard, UI_PARTITION } from './network';
 import { createOverlayManager } from './overlay';
@@ -11,6 +12,8 @@ import { realWin32 } from './tracker/win32';
 
 const rendererUrl = process.env['ELECTRON_RENDERER_URL'];
 const devOrigin = rendererUrl ? new URL(rendererUrl).origin : null;
+// Tests drive the app through a debug surface and track our own windows; never in a packaged build.
+const e2e = process.env['BARKSTUDY_E2E'] === '1' && !app.isPackaged;
 
 const toInfo = (d: Display): DisplayInfo => ({ id: d.id, bounds: d.bounds, workArea: d.workArea, scaleFactor: d.scaleFactor });
 
@@ -46,7 +49,7 @@ void app.whenReady().then(() => {
   ipcMain.on(IPC.overlayHit, (event, message: unknown) => overlays.handleHit(event.sender, message));
 
   const tracker = createTracker(realWin32(), {
-    excludePid: process.pid,
+    excludePid: e2e ? null : process.pid,
     excludeIds: () => overlays.hwnds(),
     onChange: (windows) => {
       rawWindows = windows;
@@ -63,7 +66,8 @@ void app.whenReady().then(() => {
   screen.on('display-metrics-changed', displaysChanged);
 
   // Until the tray arrives (M3) this is the way out: the overlay is click-through, so there is nothing to close.
-  if (!globalShortcut.register('Control+Alt+Q', () => app.quit())) console.error('Ctrl+Alt+Q is taken; quit from the terminal instead');
+  if (!e2e && !globalShortcut.register('Control+Alt+Q', () => app.quit())) console.error('Ctrl+Alt+Q is taken; quit from the terminal instead');
+  if (e2e) installDebug({ dogHost, tracker, overlays });
 
   displaysChanged();
   tracker.start();
