@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RawWindow } from '../../src/shared/geometry';
-import { createTracker, type Win32Api, type Win32Window } from '../../src/main/tracker/tracker';
+import { createTracker, lazyWin32, type Win32Api, type Win32Window } from '../../src/main/tracker/tracker';
 
 const w = (id: number, x = 0, pid = 100 + id): Win32Window => ({ id, pid, bounds: { x, y: 0, width: 400, height: 300 }, processName: `app${id}.exe` });
 
@@ -145,5 +145,32 @@ describe('tracker', () => {
     expect(state.unhooked).toBe(1);
     expect(vi.getTimerCount()).toBe(0);
     expect(down).toHaveLength(0);
+  });
+});
+
+describe('lazyWin32', () => {
+  it('a binding that cannot be created reports the tracker down instead of throwing at startup', () => {
+    const down: unknown[] = [];
+    const tracker = createTracker(
+      lazyWin32(() => {
+        throw new Error('koffi missing');
+      }),
+      { excludePid: null, excludeIds: () => new Set(), onChange: () => {}, onDown: (e) => down.push(e) },
+    );
+    expect(() => tracker.start()).not.toThrow();
+    expect(down).toHaveLength(1);
+    expect(String(down[0])).toContain('koffi missing');
+    expect(tracker.running).toBe(false);
+  });
+
+  it('builds the real binding once, on first use', () => {
+    const { api } = fakeApi([w(1)]);
+    const create = vi.fn(() => api);
+    const lazy = lazyWin32(create);
+    expect(create).not.toHaveBeenCalled();
+    lazy.listWindows();
+    lazy.foreground();
+    lazy.hook(() => {})();
+    expect(create).toHaveBeenCalledTimes(1);
   });
 });

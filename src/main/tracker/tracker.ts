@@ -16,6 +16,20 @@ export interface Win32Api {
   hook: (onEvent: () => void) => () => void;
 }
 
+/**
+ * Builds the Win32 binding on first use. If building it throws (koffi missing or blocked), the tracker's own
+ * error handling reports it as "down", so the app starts and roams the display edges instead of dying at startup.
+ */
+export function lazyWin32(create: () => Win32Api): Win32Api {
+  let api: Win32Api | null = null;
+  const get = (): Win32Api => (api ??= create());
+  return {
+    listWindows: () => get().listWindows(),
+    foreground: () => get().foreground(),
+    hook: (onEvent) => get().hook(onEvent),
+  };
+}
+
 export interface TrackerOptions {
   /** Windows of this process are skipped. Null tracks everything (e2e only). */
   excludePid: number | null;

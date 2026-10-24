@@ -7,7 +7,7 @@ import { installDebug } from './debug';
 import { createDogHost } from './dogHost';
 import { hardenWebContents, installNetworkGuard, UI_PARTITION } from './network';
 import { createOverlayManager } from './overlay';
-import { createTracker } from './tracker/tracker';
+import { createTracker, lazyWin32 } from './tracker/tracker';
 import { realWin32 } from './tracker/win32';
 
 const rendererUrl = process.env['ELECTRON_RENDERER_URL'];
@@ -48,7 +48,7 @@ void app.whenReady().then(() => {
 
   ipcMain.on(IPC.overlayHit, (event, message: unknown) => overlays.handleHit(event.sender, message));
 
-  const tracker = createTracker(realWin32(), {
+  const tracker = createTracker(lazyWin32(realWin32), {
     excludePid: e2e ? null : process.pid,
     excludeIds: () => overlays.hwnds(),
     onChange: (windows) => {
