@@ -37,7 +37,7 @@
 7. **Intensity cap.** The user chooses a max level, *Gentle* (2), *Playful* (3) or *Full dog* (4, default), and that's an engine invariant. Someone who hates dig-in turns it off without losing the app.
 8. **Spaced repetition.** Card **choice** is FSRS via ts-fsrs, while check-in **timing** stays the engine's job. Grades: exact match → Good, fuzzy match → Hard, wrong → Again. Self-grade offers "Got it" (Good) and "Missed it" (Again). `src/shared/srs.ts` wraps ts-fsrs, so the engine doesn't know about cards.
 9. **Answer matching.** Normalisation is NFKC, then lowercase, then strip diacritics, then collapse whitespace, then strip trailing punctuation. Allowed Damerau-Levenshtein distance is 0 for ≤ 3 chars, 1 for ≤ 7, and 2 above that. Digit runs must match exactly.
-10. **Overlay spanning.** One window if correct on mixed DPI, otherwise one per display (decided in M0). If the tracker fails at runtime, the app drops to **edge-roaming mode** automatically instead of breaking.
+10. **Overlay spanning.** One overlay window per display (decided in M0: mixed-DPI could not be tested on one monitor, and per-display windows are correct whatever the scales). If the tracker fails at runtime, the app drops to **edge-roaming mode** automatically instead of breaking.
 11. **Distribution.** MIT on GitHub. Releases are NSIS installers, signed through SignPath Foundation (free for OSS; apply early because approval takes time), published to GitHub Releases with a winget manifest per release. There's a beta channel (prerelease tags) behind a Settings toggle.
 12. **Diagnostics instead of telemetry.** Crashes go to a local crash log (`crashReporter` with `uploadToServer: false`). "Copy diagnostics" bundles app/OS version, DPI and monitor count, recent errors, and the engine input log (event types, timings, seed, no card text) for the user to attach to a GitHub issue. `npm run replay` reproduces it.
 
@@ -66,7 +66,7 @@ src/renderer/control/   onboarding, decks, session, settings, history, about
 assets/            sprites, sounds, icons (source files + exported sheets)
 tests/             engine/, checker/, property/, regressions/, shared/, main/, e2e/, fixtures/
 scripts/           explore.ts, replay.ts
-spike/             M0 throwaway (deleted at end of M2)
+(the M0 spike lived in spike/ and was deleted at the end of M2; see commit e4008b1)
 ```
 
 ---
@@ -243,7 +243,7 @@ step(s: EngineState, e: Event, ctx: Context): { state: EngineState; actions: Act
 
 ---
 
-## Milestone 2: Overlay and window tracker *(detailed plan written from M0 results)*
+## Milestone 2: Overlay and window tracker *(done: detailed plan in `docs/superpowers/plans/2026-10-24-m2-overlay-tracker.md`; the outline below is the original)*
 
 *Acceptance: dragging a window carries Pandesal along, clicks pass through everywhere except the dog and its bubble, and killing the tracker drops to edge-roaming without a crash.*
 

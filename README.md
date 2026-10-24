@@ -10,8 +10,13 @@ Node 24 LTS.
 
 ```sh
 npm ci
+node node_modules/electron/install.js   # npm 12 blocks Electron's own install script
 npm run typecheck && npm run lint && npm test
+npm run e2e                              # builds, then drives the real overlay (moves its own test window only)
+npm run dev                              # run the app; Ctrl+Alt+Q quits (a tray replaces this in M3)
 ```
+
+If your terminal sets `ELECTRON_RUN_AS_NODE` (VS Code's does), unset it before launching Electron by hand. Manual checks are listed in [docs/test-matrix.md](docs/test-matrix.md).
 
 The engine in `src/engine` is pure TypeScript: no Electron, React, DOM or Node imports, and no `Math.random()`. ESLint and `tsconfig.engine.json` both enforce that.
 

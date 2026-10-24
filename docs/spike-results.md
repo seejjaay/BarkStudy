@@ -1,7 +1,7 @@
 # M0 spike results
 
 Machine: Windows 11 (10.0.26300), one display, 1920x1080 physical at 125% (1536x864 DIP), Electron 45.0.0, koffi 3.3.3.
-Code: `spike/` (throwaway, deleted at the end of M2). Run `spike\run.cmd all` to repeat the automated checks.
+Code: `spike/` was throwaway and was deleted at the end of M2; it is in git history at commit `e4008b1`. The manual checks below now live in `docs/test-matrix.md` and run against the real app.
 
 Most checks are **automated self-tests** using synthetic input (`mouse_event`, `keybd_event`) and Win32 hit-testing (`WindowFromPoint`). They prove the mechanics at the current scale. They do not replace a human look at 100% and 150%, or a real drag with a real mouse; those are listed under "Still open".
 
@@ -36,7 +36,7 @@ Most checks are **automated self-tests** using synthetic input (`mouse_event`, `
 
 ## Notes for M2 and release engineering
 
-- **VS Code sets `ELECTRON_RUN_AS_NODE`.** Electron then behaves as plain Node (`electron --version` prints Node's). Unset it when launching (`spike\run.cmd` does). The product build has the `RunAsNode` fuse off anyway.
+- **VS Code sets `ELECTRON_RUN_AS_NODE`.** Electron then behaves as plain Node (`electron --version` prints Node's). Unset it when launching (`npm run e2e` does). The product build has the `RunAsNode` fuse off anyway.
 - **npm 12 blocks install scripts.** Electron's own `install.js` (downloads the binary) did not run; run `node node_modules/electron/install.js` or approve it with `npm install-scripts approve`. koffi loads without its install script.
 - **electron-builder** wants `electron` in `devDependencies`. `win.signAndEditExecutable:false` was used for the unsigned local build; the default path downloads `winCodeSign` and may need symlink privileges (Developer Mode) on Windows, which is untested.
 - Overlay hit-testing relies on `mousemove` forwarding, which only fires on real mouse movement; always nudge the mouse in tests.
@@ -44,7 +44,7 @@ Most checks are **automated self-tests** using synthetic input (`mouse_event`, `
 
 ## Still open (needs a human or other hardware)
 
-- [ ] **100% and 150% scaling:** run `spike\run.cmd s3 --keep` at each scale (Settings → System → Display → Scale) and confirm the outlines and title-bar bands sit on real windows. Then rerun `spike\run.cmd all` at each scale.
+- [ ] **100% and 150% scaling:** now cases 1 to 16 of `docs/test-matrix.md`, run against the real app.
 - [ ] **Drag feel:** with `run.cmd s3 --keep`, drag a window around by its title bar and confirm the outline follows without visible lag.
 - [ ] **Mixed-DPI, two monitors:** needs a second display at a different scale. Deferred; decision 2 avoids depending on it.
 - [ ] **Auto-update (S5 second half):** needs a release host.

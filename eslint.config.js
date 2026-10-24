@@ -2,7 +2,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['node_modules', 'dist', 'out', 'release', 'spike', '.superpowers', 'coverage'] },
+  { ignores: ['node_modules', 'dist', 'out', 'release', '.superpowers', 'coverage'] },
   js.configs.recommended,
   {
     files: ['**/*.{ts,tsx}'],
