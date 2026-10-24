@@ -61,7 +61,12 @@ describe('clock', () => {
   });
 
   it('effect ends exactly at lapsMaxMs even with a single TICK of 1h', () => {
-    const lapsing = run(started(patientCtx), [{ type: 'CHECKIN_DUE' }, { type: 'CHECKIN_TIMEOUT' }, { type: 'CHECKIN_TIMEOUT' }], patientCtx);
+    // At level 3 the personality picks laps or whine; take the first seed that chooses laps.
+    const toLevel3: Event[] = [{ type: 'CHECKIN_DUE' }, { type: 'CHECKIN_TIMEOUT' }, { type: 'CHECKIN_TIMEOUT' }];
+    let lapsing = run(started(patientCtx, 1), toLevel3, patientCtx);
+    for (let seed = 2; lapsing.state.rules.effect !== 'laps' && seed < 200; seed++) {
+      lapsing = run(started(patientCtx, seed), toLevel3, patientCtx);
+    }
     expect(count(lapsing.actions, 'RUN_LAPS')).toBe(1);
     expect(lapsing.state.rules.effect).toBe('laps');
 

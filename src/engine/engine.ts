@@ -1,4 +1,5 @@
 import { DEADLINE_EVENT, lerp, nextDue, NO_DEADLINES, shiftDeadlines, type Deadlines } from './clock';
+import { chooseIntent, intentToActions } from './personality';
 import { createRng, nextInt, type RngState } from './rng';
 import { applyIntent, INITIAL_RULES, ruleStep } from './rules';
 import type { Action, Context, Event, Intent, RuleEvent, RuleState } from './types';
@@ -30,28 +31,6 @@ export function createEngine(seed: number): EngineState {
     stats: { answered: 0, treats: 0, cardShownAt: null, longestWaitMs: 0, guiltTrips: [] },
   };
 }
-
-// --- Personality stub: replaced by personality.ts in Task 6. Same signatures as the real layer. ---
-function chooseIntent(intents: readonly Intent[], ctx: Context, rng: RngState): [Intent, RngState] {
-  const usable = ctx.activeWindowId === null ? intents.filter((i) => i !== 'laps' && i !== 'dig-in') : intents;
-  return [usable[0] ?? 'whine', rng];
-}
-
-function intentToActions(i: Intent, ctx: Context, rng: RngState): [Action[], RngState] {
-  switch (i) {
-    case 'show-card':
-      return [[{ type: 'SHOW_FLASHCARD' }], rng];
-    case 'laps':
-      return [ctx.activeWindowId === null ? [] : [{ type: 'RUN_LAPS', windowId: ctx.activeWindowId }], rng];
-    case 'dig-in':
-      return [ctx.activeWindowId === null ? [] : [{ type: 'START_DIG_IN', windowId: ctx.activeWindowId }], rng];
-    case 'curl-up':
-      return [[{ type: 'CURL_UP' }], rng];
-    default:
-      return [[], rng];
-  }
-}
-// -----------------------------------------------------------------------------------------------
 
 /** Escalation delay in ms: the first one after a fresh card is patience-driven, later ones neediness-driven. */
 function escalationDelay(rules: RuleState, ctx: Context): number {
@@ -126,14 +105,16 @@ function transition(s: EngineState, e: RuleEvent, ctx: Context, armBase: number)
 
   const r = ruleStep(s.rules, e);
   const actions: Action[] = [...r.required];
+  const waitedMs =
+    e.type === 'ANSWER_SUBMITTED' && s.rules.card && s.stats.cardShownAt !== null ? s.now - s.stats.cardShownAt : null;
   let rules = r.state;
   let rng = s.rng;
   let intent: Intent | null = null;
 
   if (r.intents.length > 0) {
-    [intent, rng] = chooseIntent(r.intents, ctx, rng);
+    [intent, rng] = chooseIntent(r.intents, rules, ctx, rng);
     rules = applyIntent(rules, intent);
-    const [more, next] = intentToActions(intent, ctx, rng);
+    const [more, next] = intentToActions(intent, rules, ctx, rng, waitedMs);
     actions.push(...more);
     rng = next;
   }
@@ -143,12 +124,11 @@ function transition(s: EngineState, e: RuleEvent, ctx: Context, armBase: number)
   if (!rules.card) stats.cardShownAt = null;
   if (e.type === 'ANSWER_SUBMITTED' && s.rules.card) {
     stats.answered++;
-    if (s.stats.cardShownAt !== null) {
-      const waited = s.now - s.stats.cardShownAt;
-      stats.longestWaitMs = Math.max(stats.longestWaitMs, waited);
-      if (waited >= ctx.tuning.guiltThresholdMs) {
-        actions.push({ type: 'RECORD_GUILT_TRIP', waitedMs: waited });
-        stats.guiltTrips = [...stats.guiltTrips, waited];
+    if (waitedMs !== null) {
+      stats.longestWaitMs = Math.max(stats.longestWaitMs, waitedMs);
+      if (waitedMs >= ctx.tuning.guiltThresholdMs) {
+        actions.push({ type: 'RECORD_GUILT_TRIP', waitedMs });
+        stats.guiltTrips = [...stats.guiltTrips, waitedMs];
       }
     }
   }
