@@ -33,7 +33,8 @@
     "vitest": "5.0.5"
   },
   "dependencies": {
-    "koffi": "3.3.3"
+    "koffi": "3.3.3",
+    "ts-fsrs": "5.4.2"
   },
   "main": "out/main/index.cjs"
 }
