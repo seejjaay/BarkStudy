@@ -1,0 +1,45 @@
+{
+  "name": "barkstudy-spike",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Throwaway M0 spike. Deleted at the end of M2.",
+  "main": "main.js",
+  "scripts": {
+    "dist": "electron-builder --win nsis"
+  },
+  "dependencies": {
+    "koffi": "3.3.3"
+  },
+  "devDependencies": {
+    "electron-builder": "26.18.0",
+    "electron": "45.0.0"
+  },
+  "author": "CJ Nicko Rosales",
+  "build": {
+    "appId": "io.github.spike.barkstudy-spike",
+    "productName": "BarkStudy Spike",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "win32.js",
+      "preload.js",
+      "renderer.js",
+      "overlay.html",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/koffi/**"
+    ],
+    "win": {
+      "target": "nsis",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

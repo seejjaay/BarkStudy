@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'" />
+    <style>
+      html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; font: 12px Segoe UI, sans-serif; }
+      canvas { position: absolute; inset: 0; }
+      #dog { position: absolute; background: #e8a33d; border: 2px solid #5b3a00; border-radius: 12px; color: #2b1a00;
+             display: flex; align-items: center; justify-content: center; font-weight: 600; user-select: none; }
+      #bubble { position: absolute; background: #fff; border: 2px solid #333; border-radius: 10px; padding: 6px; box-sizing: border-box; }
+      #bubble input { width: 100%; box-sizing: border-box; font-size: 14px; padding: 4px; }
+      #info { position: absolute; left: 12px; top: 12px; background: rgba(0,0,0,.65); color: #fff; padding: 6px 10px; border-radius: 6px; white-space: pre; }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div id="info"></div>
+    <div id="dog">Pandesal</div>
+    <div id="bubble"><input id="answer" placeholder="type here (S4)" autocomplete="off" /></div>
+    <script src="renderer.js"></script>
+  </body>
+</html>
