@@ -68,6 +68,7 @@ export function createDogHost(opts: { seed: number; sink: FrameSink; clock?: Clo
   let lastTick = clock.now();
   let settleUntil = 0;
   let shownOn: number | null = null;
+  let lastSent: string | null = null;
   let disposed = false;
 
   function rebuild(): void {
@@ -118,8 +119,13 @@ export function createDogHost(opts: { seed: number; sink: FrameSink; clock?: Clo
     if (shownOn !== null && shownOn !== target) {
       opts.sink.send(shownOn, null);
       shownOn = null;
+      lastSent = null;
     }
     if (frame && target !== null) {
+      // An idle dog changes nothing, so it should cost nothing: skip frames identical to the last one sent.
+      const key = `${target}:${JSON.stringify(frame)}`;
+      if (key === lastSent) return;
+      lastSent = key;
       opts.sink.send(target, frame);
       shownOn = target;
     }

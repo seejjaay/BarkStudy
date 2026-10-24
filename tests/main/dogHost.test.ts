@@ -80,6 +80,16 @@ describe('dog host', () => {
     host.dispose();
   });
 
+  it('does not resend an identical frame', () => {
+    const { host, calls } = setup();
+    host.setWorld([], [D1]);
+    const sent = calls.length;
+    host.setWorld([], [D1]);
+    host.setWorld([], [D1]);
+    expect(calls.length).toBe(sent);
+    host.dispose();
+  });
+
   it('frame coordinates are relative to the display origin', () => {
     const { host, last } = setup();
     host.setWorld([], [D2, D1]);

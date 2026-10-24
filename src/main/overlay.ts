@@ -49,6 +49,11 @@ export function createOverlayManager(opts: { preload: string; load: (w: BrowserW
     win.webContents.on('render-process-gone', () => {
       if (!win.isDestroyed()) win.webContents.reload();
     });
+    if (process.env['BARKSTUDY_DEBUG']) {
+      win.webContents.on('console-message', (event) => console.log('[overlay]', event.message));
+      win.webContents.on('preload-error', (_e, path, err) => console.log('[overlay] preload error', path, err));
+      win.webContents.on('did-fail-load', (_e, code, desc) => console.log('[overlay] load failed', code, desc));
+    }
     win.on('closed', () => {
       if (windows.get(d.id) === win) windows.delete(d.id);
     });
