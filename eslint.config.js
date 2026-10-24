@@ -45,4 +45,24 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // The overlay renderer is sandboxed: no Electron or Node imports; it talks to main through window.barkOverlay.
+    files: ['src/renderer/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [{ name: 'electron', message: 'Renderers use the contextBridge API.' }],
+          patterns: [{ group: ['node:*'], message: 'Renderers have no Node.' }],
+        },
+      ],
+    },
+  },
+  {
+    // A sandboxed preload can import only electron and bundled local modules.
+    files: ['src/preload/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [{ group: ['node:*'], message: 'Sandboxed preloads have no Node.' }] }],
+    },
+  },
 );
