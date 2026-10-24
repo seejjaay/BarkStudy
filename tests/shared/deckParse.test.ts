@@ -9,7 +9,11 @@ const card = (front: string, back: string): CardInput => ({ front, back });
 
 describe('parseDeck: real-shaped files', () => {
   it('Excel CSV with BOM and CRLF: quoted commas, doubled quotes, a header row and an empty row', () => {
-    const r = parseDeck(fixture('excel-bom-crlf.csv'));
+    const raw = fixture('excel-bom-crlf.csv');
+    // Guard: git must not normalise the fixture, or this test would stop covering BOM and CRLF.
+    expect(raw.charCodeAt(0)).toBe(0xfeff);
+    expect(raw).toContain('\r\n');
+    const r = parseDeck(raw);
     expect(r.cards).toEqual([
       card('Hello, world', 'Bonjour le monde'),
       card('She said "hi"', 'Elle a dit « salut »'),
