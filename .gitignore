@@ -1,0 +1,9 @@
+node_modules/
+dist/
+out/
+release/
+coverage/
+.superpowers/
+*.log
+.DS_Store
+.claude/settings.local.json
