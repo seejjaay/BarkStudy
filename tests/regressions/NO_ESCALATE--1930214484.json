@@ -1,0 +1,132 @@
+{
+  "property": "no escalation while away or suppressed",
+  "violation": {
+    "id": "NO_ESCALATE",
+    "message": "step 3 {\"type\":\"ANSWER_SUBMITTED\",\"correct\":false} raised the level from 1 to 2 while away"
+  },
+  "scenario": {
+    "seed": 0,
+    "steps": [
+      {
+        "event": {
+          "type": "SESSION_START",
+          "cap": 2
+        },
+        "ctx": {
+          "traits": {
+            "neediness": 0,
+            "drama": 0,
+            "patience": 0,
+            "zoominess": 0
+          },
+          "tuning": {
+            "checkinMinMs": 300000,
+            "checkinMaxMs": 900000,
+            "firstEscalationMs": 90000,
+            "escalationStepMs": 60000,
+            "activeSlowdown": 2,
+            "digInCooldownMs": 600000,
+            "lapsMaxMs": 6000,
+            "digInMaxMs": 8000,
+            "guiltThresholdMs": 120000,
+            "awayIdleMs": 300000,
+            "busyIdleMs": 10000
+          },
+          "activeWindowId": null,
+          "busy": false,
+          "lastGuiltMs": null
+        }
+      },
+      {
+        "event": {
+          "type": "TICK",
+          "dtMs": 887487
+        },
+        "ctx": {
+          "traits": {
+            "neediness": 0,
+            "drama": 0,
+            "patience": 0,
+            "zoominess": 0
+          },
+          "tuning": {
+            "checkinMinMs": 300000,
+            "checkinMaxMs": 900000,
+            "firstEscalationMs": 90000,
+            "escalationStepMs": 60000,
+            "activeSlowdown": 2,
+            "digInCooldownMs": 600000,
+            "lapsMaxMs": 6000,
+            "digInMaxMs": 8000,
+            "guiltThresholdMs": 120000,
+            "awayIdleMs": 300000,
+            "busyIdleMs": 10000
+          },
+          "activeWindowId": null,
+          "busy": false,
+          "lastGuiltMs": null
+        }
+      },
+      {
+        "event": {
+          "type": "USER_ACTIVITY",
+          "state": "away"
+        },
+        "ctx": {
+          "traits": {
+            "neediness": 0,
+            "drama": 0,
+            "patience": 0,
+            "zoominess": 0
+          },
+          "tuning": {
+            "checkinMinMs": 300000,
+            "checkinMaxMs": 900000,
+            "firstEscalationMs": 90000,
+            "escalationStepMs": 60000,
+            "activeSlowdown": 2,
+            "digInCooldownMs": 600000,
+            "lapsMaxMs": 6000,
+            "digInMaxMs": 8000,
+            "guiltThresholdMs": 120000,
+            "awayIdleMs": 300000,
+            "busyIdleMs": 10000
+          },
+          "activeWindowId": null,
+          "busy": false,
+          "lastGuiltMs": null
+        }
+      },
+      {
+        "event": {
+          "type": "ANSWER_SUBMITTED",
+          "correct": false
+        },
+        "ctx": {
+          "traits": {
+            "neediness": 0,
+            "drama": 0,
+            "patience": 0,
+            "zoominess": 0
+          },
+          "tuning": {
+            "checkinMinMs": 300000,
+            "checkinMaxMs": 900000,
+            "firstEscalationMs": 90000,
+            "escalationStepMs": 60000,
+            "activeSlowdown": 2,
+            "digInCooldownMs": 600000,
+            "lapsMaxMs": 6000,
+            "digInMaxMs": 8000,
+            "guiltThresholdMs": 120000,
+            "awayIdleMs": 300000,
+            "busyIdleMs": 10000
+          },
+          "activeWindowId": null,
+          "busy": false,
+          "lastGuiltMs": null
+        }
+      }
+    ]
+  }
+}

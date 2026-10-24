@@ -1,0 +1,101 @@
+{
+  "property": "rule invariants hold on every engine step",
+  "violation": {
+    "id": "WRONG_NO_RAISE",
+    "message": "step 2 {\"type\":\"ANSWER_SUBMITTED\",\"correct\":false} broke WRONG_NO_RAISE via {\"type\":\"ANSWER_SUBMITTED\",\"correct\":false}"
+  },
+  "scenario": {
+    "seed": 0,
+    "steps": [
+      {
+        "event": {
+          "type": "SESSION_START",
+          "cap": 2
+        },
+        "ctx": {
+          "traits": {
+            "neediness": 0,
+            "drama": 0,
+            "patience": 0,
+            "zoominess": 0
+          },
+          "tuning": {
+            "checkinMinMs": 300000,
+            "checkinMaxMs": 900000,
+            "firstEscalationMs": 90000,
+            "escalationStepMs": 60000,
+            "activeSlowdown": 2,
+            "digInCooldownMs": 600000,
+            "lapsMaxMs": 6000,
+            "digInMaxMs": 8000,
+            "guiltThresholdMs": 120000,
+            "awayIdleMs": 300000,
+            "busyIdleMs": 10000
+          },
+          "activeWindowId": null,
+          "busy": false,
+          "lastGuiltMs": null
+        }
+      },
+      {
+        "event": {
+          "type": "CHECKIN_DUE"
+        },
+        "ctx": {
+          "traits": {
+            "neediness": 0,
+            "drama": 0,
+            "patience": 0,
+            "zoominess": 0
+          },
+          "tuning": {
+            "checkinMinMs": 300000,
+            "checkinMaxMs": 900000,
+            "firstEscalationMs": 90000,
+            "escalationStepMs": 60000,
+            "activeSlowdown": 2,
+            "digInCooldownMs": 600000,
+            "lapsMaxMs": 6000,
+            "digInMaxMs": 8000,
+            "guiltThresholdMs": 120000,
+            "awayIdleMs": 300000,
+            "busyIdleMs": 10000
+          },
+          "activeWindowId": null,
+          "busy": false,
+          "lastGuiltMs": null
+        }
+      },
+      {
+        "event": {
+          "type": "ANSWER_SUBMITTED",
+          "correct": false
+        },
+        "ctx": {
+          "traits": {
+            "neediness": 0,
+            "drama": 0,
+            "patience": 0,
+            "zoominess": 0
+          },
+          "tuning": {
+            "checkinMinMs": 300000,
+            "checkinMaxMs": 900000,
+            "firstEscalationMs": 90000,
+            "escalationStepMs": 60000,
+            "activeSlowdown": 2,
+            "digInCooldownMs": 600000,
+            "lapsMaxMs": 6000,
+            "digInMaxMs": 8000,
+            "guiltThresholdMs": 120000,
+            "awayIdleMs": 300000,
+            "busyIdleMs": 10000
+          },
+          "activeWindowId": null,
+          "busy": false,
+          "lastGuiltMs": null
+        }
+      }
+    ]
+  }
+}

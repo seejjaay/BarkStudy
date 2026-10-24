@@ -1,4 +1,5 @@
 import { DEADLINE_EVENT, lerp, nextDue, NO_DEADLINES, shiftDeadlines, type Deadlines } from './clock';
+import type { Transition } from './invariants';
 import { chooseIntent, intentToActions } from './personality';
 import { createRng, nextInt, type RngState } from './rng';
 import { applyIntent, INITIAL_RULES, ruleStep } from './rules';
@@ -20,6 +21,9 @@ export interface EngineState {
   rng: RngState;
   stats: Stats;
 }
+
+/** One rule-layer transition the engine took, with the engine time it happened at. For tests and replay tooling. */
+export type TraceEntry = Transition & { at: number };
 
 export function createEngine(seed: number): EngineState {
   return {
@@ -90,9 +94,20 @@ function settle(
   return { deadlines: out, rng };
 }
 
-function transition(s: EngineState, e: RuleEvent, ctx: Context, armBase: number): { state: EngineState; actions: Action[] } {
+function transition(
+  s: EngineState,
+  e: RuleEvent,
+  ctx: Context,
+  armBase: number,
+  trace?: TraceEntry[],
+): { state: EngineState; actions: Action[] } {
   let deadlines = s.deadlines;
   let pausedAt = s.pausedAt;
+  // The rules reset to INITIAL (unpaused) on a session boundary, so the clock's pause and deadlines go with them.
+  if (e.type === 'SESSION_START' || e.type === 'SESSION_END') {
+    deadlines = { ...NO_DEADLINES, digCooldownEnd: deadlines.digCooldownEnd };
+    pausedAt = null;
+  }
   if (e.type === 'PAUSE' && pausedAt === null) pausedAt = s.now;
   if (e.type === 'RESUME' && pausedAt !== null) {
     deadlines = shiftDeadlines(deadlines, s.now - pausedAt);
@@ -135,13 +150,14 @@ function transition(s: EngineState, e: RuleEvent, ctx: Context, armBase: number)
   if (r.required.some((a) => a.type === 'AWARD_TREAT')) stats.treats++;
 
   const settled = settle(deadlines, rules, rng, e, intent, s.now, armBase, ctx);
+  trace?.push({ prev: s.rules, event: e, intent, next: rules, actions: [...actions], at: s.now });
   return {
     state: { ...s, rules, deadlines: settled.deadlines, pausedAt, rng: settled.rng, stats },
     actions,
   };
 }
 
-function tick(s: EngineState, dtMs: number, ctx: Context): { state: EngineState; actions: Action[] } {
+function tick(s: EngineState, dtMs: number, ctx: Context, trace?: TraceEntry[]): { state: EngineState; actions: Action[] } {
   const target = s.now + dtMs;
   if (s.pausedAt !== null) return { state: { ...s, now: target }, actions: [] };
 
@@ -149,20 +165,26 @@ function tick(s: EngineState, dtMs: number, ctx: Context): { state: EngineState;
   const actions: Action[] = [];
   for (let due = nextDue(cur.deadlines, target); due !== null; due = nextDue(cur.deadlines, target)) {
     cur = { ...cur, now: Math.max(cur.now, due.at), deadlines: { ...cur.deadlines, [due.key]: null } };
-    const r = transition(cur, DEADLINE_EVENT[due.key], ctx, target);
+    const r = transition(cur, DEADLINE_EVENT[due.key], ctx, target, trace);
     cur = r.state;
     actions.push(...r.actions);
   }
   return { state: { ...cur, now: target }, actions };
 }
 
-export function step(s: EngineState, e: Event, ctx: Context): { state: EngineState; actions: Action[] } {
+/** `trace`, if given, collects every rule transition the step takes (including ones the clock fires inside a TICK). */
+export function step(
+  s: EngineState,
+  e: Event,
+  ctx: Context,
+  trace?: TraceEntry[],
+): { state: EngineState; actions: Action[] } {
   switch (e.type) {
     case 'TICK':
-      return tick(s, e.dtMs, ctx);
+      return tick(s, e.dtMs, ctx, trace);
     case 'WINDOW_FOCUS_CHANGED':
       return { state: s, actions: [] };
     default:
-      return transition(s, e, ctx, s.now);
+      return transition(s, e, ctx, s.now, trace);
   }
 }

@@ -1,0 +1,218 @@
+{
+  "property": "effects never outlive their max",
+  "violation": {
+    "id": "EFFECT_MAX",
+    "message": "step 6 {\"type\":\"TICK\",\"dtMs\":6000} left laps running with effectEnd=6000 now=6000"
+  },
+  "scenario": {
+    "seed": 0,
+    "steps": [
+      {
+        "event": {
+          "type": "SESSION_START",
+          "cap": 2
+        },
+        "ctx": {
+          "traits": {
+            "neediness": 0,
+            "drama": 0,
+            "patience": 0,
+            "zoominess": 0
+          },
+          "tuning": {
+            "checkinMinMs": 300000,
+            "checkinMaxMs": 900000,
+            "firstEscalationMs": 90000,
+            "escalationStepMs": 60000,
+            "activeSlowdown": 2,
+            "digInCooldownMs": 600000,
+            "lapsMaxMs": 6000,
+            "digInMaxMs": 8000,
+            "guiltThresholdMs": 120000,
+            "awayIdleMs": 300000,
+            "busyIdleMs": 10000
+          },
+          "activeWindowId": null,
+          "busy": false,
+          "lastGuiltMs": null
+        }
+      },
+      {
+        "event": {
+          "type": "PAUSE"
+        },
+        "ctx": {
+          "traits": {
+            "neediness": 0,
+            "drama": 0,
+            "patience": 0,
+            "zoominess": 0
+          },
+          "tuning": {
+            "checkinMinMs": 300000,
+            "checkinMaxMs": 900000,
+            "firstEscalationMs": 90000,
+            "escalationStepMs": 60000,
+            "activeSlowdown": 2,
+            "digInCooldownMs": 600000,
+            "lapsMaxMs": 6000,
+            "digInMaxMs": 8000,
+            "guiltThresholdMs": 120000,
+            "awayIdleMs": 300000,
+            "busyIdleMs": 10000
+          },
+          "activeWindowId": null,
+          "busy": false,
+          "lastGuiltMs": null
+        }
+      },
+      {
+        "event": {
+          "type": "SESSION_START",
+          "cap": 4
+        },
+        "ctx": {
+          "traits": {
+            "neediness": 0,
+            "drama": 0,
+            "patience": 0,
+            "zoominess": 0
+          },
+          "tuning": {
+            "checkinMinMs": 300000,
+            "checkinMaxMs": 900000,
+            "firstEscalationMs": 90000,
+            "escalationStepMs": 60000,
+            "activeSlowdown": 2,
+            "digInCooldownMs": 600000,
+            "lapsMaxMs": 6000,
+            "digInMaxMs": 8000,
+            "guiltThresholdMs": 120000,
+            "awayIdleMs": 300000,
+            "busyIdleMs": 10000
+          },
+          "activeWindowId": null,
+          "busy": false,
+          "lastGuiltMs": null
+        }
+      },
+      {
+        "event": {
+          "type": "CHECKIN_DUE"
+        },
+        "ctx": {
+          "traits": {
+            "neediness": 0,
+            "drama": 0,
+            "patience": 0,
+            "zoominess": 0
+          },
+          "tuning": {
+            "checkinMinMs": 300000,
+            "checkinMaxMs": 900000,
+            "firstEscalationMs": 90000,
+            "escalationStepMs": 60000,
+            "activeSlowdown": 2,
+            "digInCooldownMs": 600000,
+            "lapsMaxMs": 6000,
+            "digInMaxMs": 8000,
+            "guiltThresholdMs": 120000,
+            "awayIdleMs": 300000,
+            "busyIdleMs": 10000
+          },
+          "activeWindowId": null,
+          "busy": false,
+          "lastGuiltMs": null
+        }
+      },
+      {
+        "event": {
+          "type": "CHECKIN_TIMEOUT"
+        },
+        "ctx": {
+          "traits": {
+            "neediness": 0,
+            "drama": 0,
+            "patience": 0,
+            "zoominess": 0
+          },
+          "tuning": {
+            "checkinMinMs": 300000,
+            "checkinMaxMs": 900000,
+            "firstEscalationMs": 90000,
+            "escalationStepMs": 60000,
+            "activeSlowdown": 2,
+            "digInCooldownMs": 600000,
+            "lapsMaxMs": 6000,
+            "digInMaxMs": 8000,
+            "guiltThresholdMs": 120000,
+            "awayIdleMs": 300000,
+            "busyIdleMs": 10000
+          },
+          "activeWindowId": null,
+          "busy": false,
+          "lastGuiltMs": null
+        }
+      },
+      {
+        "event": {
+          "type": "CHECKIN_TIMEOUT"
+        },
+        "ctx": {
+          "traits": {
+            "neediness": 0,
+            "drama": 0,
+            "patience": 0,
+            "zoominess": 0
+          },
+          "tuning": {
+            "checkinMinMs": 300000,
+            "checkinMaxMs": 900000,
+            "firstEscalationMs": 90000,
+            "escalationStepMs": 60000,
+            "activeSlowdown": 2,
+            "digInCooldownMs": 600000,
+            "lapsMaxMs": 6000,
+            "digInMaxMs": 8000,
+            "guiltThresholdMs": 120000,
+            "awayIdleMs": 300000,
+            "busyIdleMs": 10000
+          },
+          "activeWindowId": 1,
+          "busy": false,
+          "lastGuiltMs": null
+        }
+      },
+      {
+        "event": {
+          "type": "TICK",
+          "dtMs": 6000
+        },
+        "ctx": {
+          "traits": {
+            "neediness": 0,
+            "drama": 0,
+            "patience": 0,
+            "zoominess": 0
+          },
+          "tuning": {
+            "checkinMinMs": 300000,
+            "checkinMaxMs": 900000,
+            "firstEscalationMs": 90000,
+            "escalationStepMs": 60000,
+            "activeSlowdown": 2,
+            "digInCooldownMs": 600000,
+            "lapsMaxMs": 6000,
+            "digInMaxMs": 8000,
+            "guiltThresholdMs": 120000,
+            "awayIdleMs": 300000,
+            "busyIdleMs": 10000
+          },
+          "activeWindowId": null,
+          "busy": false,
+          "lastGuiltMs": null
+        }
+      }
+    ]
+  }
+}

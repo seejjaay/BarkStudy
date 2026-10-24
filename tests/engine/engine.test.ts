@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createEngine, step, type EngineState } from '../../src/engine/engine';
+import { createEngine, step, type EngineState, type TraceEntry } from '../../src/engine/engine';
 import { DEFAULT_TRAITS, DEFAULT_TUNING } from '../../src/engine/tuning';
 import type { Action, Context, Event } from '../../src/engine/types';
 
@@ -93,6 +93,42 @@ describe('clock', () => {
     expect(waitingResumed.actions).toEqual([]);
     expect(waitingResumed.state.deadlines.timeout).toBe(waiting.deadlines.timeout! + 30 * MIN);
     expect(waitingResumed.state.pausedAt).toBeNull();
+  });
+
+  it('a new session while paused clears the pause so the clock runs again', () => {
+    const r = run(started(), [{ type: 'PAUSE' }, { type: 'SESSION_START', cap: 4 }]);
+    expect(r.state.rules.paused).toBe(false);
+    expect(r.state.pausedAt).toBeNull();
+    const wait = r.state.deadlines.checkin! - r.state.now;
+    expect(count(step(r.state, { type: 'TICK', dtMs: wait }, ctx).actions, 'SHOW_FLASHCARD')).toBe(1);
+  });
+
+  it('a dig-in cooldown survives ending and restarting the session', () => {
+    const toDig: Event[] = [
+      { type: 'CHECKIN_DUE' },
+      { type: 'CHECKIN_TIMEOUT' },
+      { type: 'CHECKIN_TIMEOUT' },
+      { type: 'CHECKIN_TIMEOUT' },
+    ];
+    const first = run(started(), toDig);
+    expect(count(first.actions, 'START_DIG_IN')).toBe(1);
+
+    const restartedEarly = run(first.state, [{ type: 'SESSION_END' }, { type: 'SESSION_START', cap: 4 }, ...toDig]);
+    expect(count(restartedEarly.actions, 'START_DIG_IN')).toBe(0);
+
+    const restartedLater = run(first.state, [
+      { type: 'SESSION_END' },
+      { type: 'TICK', dtMs: DEFAULT_TUNING.digInCooldownMs },
+      { type: 'SESSION_START', cap: 4 },
+      ...toDig,
+    ]);
+    expect(count(restartedLater.actions, 'START_DIG_IN')).toBe(1);
+  });
+
+  it('SESSION_END disarms every deadline', () => {
+    const r = run(started(), [{ type: 'CHECKIN_DUE' }, { type: 'SESSION_END' }]);
+    expect(r.state.deadlines).toEqual({ checkin: null, timeout: null, effectEnd: null, digCooldownEnd: null, stayEnd: null });
+    expect(r.state.pausedAt).toBeNull();
   });
 
   it('TICK of 6h fires at most one CHECKIN_DUE and does not escalate', () => {
@@ -205,6 +241,19 @@ describe('engine hygiene', () => {
     const a = run(started(ctx, 5), events);
     const b = run(started(ctx, 5), events);
     expect(a).toEqual(b);
+  });
+
+  it('step records each rule transition, with its exact time, into an optional trace', () => {
+    const s = started();
+    const direct: TraceEntry[] = [];
+    step(s, { type: 'CHECKIN_DUE' }, ctx, direct);
+    expect(direct).toHaveLength(1);
+    expect(direct[0]).toMatchObject({ at: s.now, event: { type: 'CHECKIN_DUE' }, intent: 'show-card' });
+    expect(direct[0]?.next.card).toBe(true);
+
+    const viaClock: TraceEntry[] = [];
+    step(s, { type: 'TICK', dtMs: s.deadlines.checkin! - s.now + 5_000 }, ctx, viaClock);
+    expect(viaClock[0]).toMatchObject({ at: s.deadlines.checkin, event: { type: 'CHECKIN_DUE' } });
   });
 
   it('WINDOW_FOCUS_CHANGED alone changes nothing', () => {

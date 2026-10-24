@@ -126,11 +126,15 @@ export function ruleStep(s: RuleState, e: RuleEvent): RuleResult {
       return result(cleared.state, cleared.required);
     }
 
+    // The dig-in cooldown outlives the session, or restarting would be a way round it.
     case 'SESSION_START':
-      return result({ ...INITIAL_RULES, session: true, cap: e.cap }, clearEffect(s).required);
+      return result(
+        { ...INITIAL_RULES, session: true, cap: e.cap, digCooling: s.digCooling },
+        clearEffect(s).required,
+      );
 
     case 'SESSION_END':
-      return result(INITIAL_RULES, clearEffect(s).required);
+      return result({ ...INITIAL_RULES, digCooling: s.digCooling }, clearEffect(s).required);
 
     default:
       return result(s);
