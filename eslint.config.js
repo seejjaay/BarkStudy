@@ -27,7 +27,7 @@ export default tseslint.config(
   },
   {
     // The engine is pure: no Electron, React or Node. tsconfig.engine.json blocks DOM and Node types too.
-    files: ['src/engine/**/*.ts'],
+    files: ['src/engine/**/*.ts', 'src/shared/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
