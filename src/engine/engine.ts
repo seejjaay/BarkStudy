@@ -158,6 +158,8 @@ function transition(
 }
 
 function tick(s: EngineState, dtMs: number, ctx: Context, trace?: TraceEntry[]): { state: EngineState; actions: Action[] } {
+  // A bad delta (NaN, negative, infinite) would poison `now` or never stop firing re-armed deadlines.
+  if (!Number.isFinite(dtMs) || dtMs <= 0) return { state: s, actions: [] };
   const target = s.now + dtMs;
   if (s.pausedAt !== null) return { state: { ...s, now: target }, actions: [] };
 

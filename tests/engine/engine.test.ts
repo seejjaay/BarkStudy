@@ -256,6 +256,13 @@ describe('engine hygiene', () => {
     expect(viaClock[0]).toMatchObject({ at: s.deadlines.checkin, event: { type: 'CHECKIN_DUE' } });
   });
 
+  it.each([Number.NaN, -5_000, Number.POSITIVE_INFINITY])('a TICK of %s ms is ignored instead of corrupting or hanging the clock', (dtMs) => {
+    const s = started();
+    const r = step(s, { type: 'TICK', dtMs }, ctx);
+    expect(r.state).toEqual(s);
+    expect(r.actions).toEqual([]);
+  });
+
   it('WINDOW_FOCUS_CHANGED alone changes nothing', () => {
     const s = started();
     const r = step(s, { type: 'WINDOW_FOCUS_CHANGED', windowId: 3 }, ctx);
