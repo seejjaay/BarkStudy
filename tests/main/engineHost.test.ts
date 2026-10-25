@@ -199,6 +199,36 @@ describe('the study loop', () => {
   });
 });
 
+describe('status', () => {
+  it('reports pause, stay with its time left, away and the card being up', () => {
+    const { host } = setup();
+    host.start(opts());
+    expect(host.status()).toEqual({
+      paused: false,
+      stay: false,
+      stayLeftMs: null,
+      activity: 'active',
+      suppressed: false,
+      cardUp: false,
+      answered: 0,
+      treats: 0,
+    });
+    host.dispatch({ type: 'PAUSE' });
+    expect(host.status().paused).toBe(true);
+    host.dispatch({ type: 'RESUME' });
+    host.dispatch({ type: 'STAY_ON', durationMs: 15 * MIN });
+    expect(host.status()).toMatchObject({ stay: true, stayLeftMs: 15 * MIN });
+    vi.advanceTimersByTime(5 * MIN);
+    expect(host.status().stayLeftMs).toBeLessThanOrEqual(10 * MIN);
+    expect(host.status().stayLeftMs).toBeGreaterThan(10 * MIN - 1000);
+    vi.advanceTimersByTime(10 * MIN + 1000);
+    expect(host.status()).toMatchObject({ stay: false, stayLeftMs: null });
+    host.dispatch({ type: 'USER_ACTIVITY', state: 'away' });
+    host.dispatch({ type: 'SUPPRESS_CHANGED', on: true });
+    expect(host.status()).toMatchObject({ activity: 'away', suppressed: true });
+  });
+});
+
 describe('state that outlives a session', () => {
   it('a screen that is locked or suppressed when the session starts stays quiet', () => {
     const { host, rec } = setup();

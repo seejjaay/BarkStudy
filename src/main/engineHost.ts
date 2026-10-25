@@ -73,6 +73,19 @@ export interface Diagnostics {
   entries: readonly LogEntry[];
 }
 
+/** What the control window shows about a running session. */
+export interface HostStatus {
+  paused: boolean;
+  stay: boolean;
+  /** Time left in the stay, as of the last tick. */
+  stayLeftMs: number | null;
+  activity: Activity;
+  suppressed: boolean;
+  cardUp: boolean;
+  answered: number;
+  treats: number;
+}
+
 export interface EngineHost {
   /** Throws on an empty deck or if a session is already running. */
   start: (opts: StartOptions) => void;
@@ -86,6 +99,7 @@ export interface EngineHost {
   setActiveWindow: (id: number | null) => void;
   setPreset: (preset: TraitPreset) => void;
   readonly running: boolean;
+  status: () => HostStatus;
   diagnostics: () => Diagnostics;
   dispose: () => void;
 }
@@ -298,6 +312,19 @@ export function createEngineHost(opts: EngineHostOptions): EngineHost {
 
     get running() {
       return running;
+    },
+    status() {
+      const { rules, deadlines, now } = state;
+      return {
+        paused: rules.paused,
+        stay: rules.stay,
+        stayLeftMs: rules.stay && deadlines.stayEnd !== null ? Math.max(0, deadlines.stayEnd - now) : null,
+        activity: rules.activity,
+        suppressed: rules.suppressed,
+        cardUp: rules.card,
+        answered: state.stats.answered,
+        treats: state.stats.treats,
+      };
     },
     diagnostics: () => ({ seed: opts.seed, entries: log.map((e) => ({ ...e })) }),
     dispose() {
