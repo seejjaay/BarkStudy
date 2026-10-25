@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { BubbleState, RevealResult, SelfGrade, SubmitResult } from '../shared/bubble';
 import { IPC, type BarkOverlayApi, type DogFrame } from '../shared/ipc';
 
 const api: BarkOverlayApi = {
@@ -7,6 +8,24 @@ const api: BarkOverlayApi = {
   },
   hit: (over) => {
     ipcRenderer.send(IPC.overlayHit, over);
+  },
+  onBubble: (cb) => {
+    ipcRenderer.on(IPC.bubbleState, (_event, state: BubbleState | null) => cb(state));
+  },
+  onFocusInput: (cb) => {
+    ipcRenderer.on(IPC.bubbleFocusInput, () => cb());
+  },
+  submit: (text) => ipcRenderer.invoke(IPC.bubbleSubmit, text) as Promise<SubmitResult>,
+  reveal: () => ipcRenderer.invoke(IPC.bubbleReveal) as Promise<RevealResult>,
+  grade: (grade: SelfGrade) => ipcRenderer.invoke(IPC.bubbleGrade, grade) as Promise<boolean>,
+  dismiss: () => {
+    ipcRenderer.send(IPC.bubbleDismiss);
+  },
+  open: () => {
+    ipcRenderer.send(IPC.bubbleOpen);
+  },
+  focus: (on) => {
+    ipcRenderer.send(IPC.bubbleFocus, on);
   },
 };
 

@@ -1,11 +1,13 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { app, globalShortcut, ipcMain, powerMonitor, screen, session, systemPreferences, type Display } from 'electron';
+import { app, globalShortcut, ipcMain, powerMonitor, screen, session, systemPreferences, type Display, type WebContents } from 'electron';
 import { DEFAULT_TUNING } from '../engine/tuning';
+import { BUBBLE_HOTKEY } from '../shared/bubble';
 import { CONTROL_CHANNEL } from '../shared/control';
 import type { DisplayInfo, RawWindow } from '../shared/geometry';
 import { toDipWindows } from '../shared/geometry';
 import { IPC } from '../shared/ipc';
+import { createBubbleHost } from './bubbleHost';
 import { createControlHandlers } from './controlHandlers';
 import { createControlWindow } from './controlWindow';
 import { installDebug } from './debug';
@@ -48,11 +50,35 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
   });
   let trackerDown = false;
 
+  const overlays = createOverlayManager({
+    preload: join(__dirname, '../preload/overlay.cjs'),
+    load: (win) => (rendererUrl ? win.loadURL(`${rendererUrl}/overlay/index.html`) : win.loadFile(join(__dirname, '../renderer/overlay/index.html'))),
+  });
+
   const studySession = createSessionController({
     library,
     seed: Date.now() % 2 ** 31,
     publish: (view) => controlWindow.send({ type: 'session', view }),
+    publishBubble: (state) => bubble.onBubbleChanged(state),
   });
+  const bubble = createBubbleHost({
+    session: studySession,
+    overlays: {
+      broadcast: (channel, payload) => overlays.broadcast(channel, payload),
+      isOverlay: (sender) => overlays.isOverlay(sender as WebContents),
+      setFocus: (sender, on) => overlays.setFocus(sender as WebContents, on),
+    },
+    hotkeys: {
+      register: (accelerator, onPress) => globalShortcut.register(accelerator, onPress),
+      unregister: (accelerator) => globalShortcut.unregister(accelerator),
+    },
+  });
+  for (const channel of [IPC.bubbleSubmit, IPC.bubbleReveal, IPC.bubbleGrade]) {
+    ipcMain.handle(channel, (event, payload: unknown) => bubble.handle(channel, event.sender, payload));
+  }
+  for (const channel of [IPC.bubbleDismiss, IPC.bubbleOpen, IPC.bubbleFocus]) {
+    ipcMain.on(channel, (event, payload: unknown) => void bubble.handle(channel, event.sender, payload));
+  }
   const handlers = createControlHandlers({
     library,
     session: studySession,
@@ -79,10 +105,6 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
   powerMonitor.on('lock-screen', () => idle.setLocked(true));
   powerMonitor.on('unlock-screen', () => idle.setLocked(false));
 
-  const overlays = createOverlayManager({
-    preload: join(__dirname, '../preload/overlay.cjs'),
-    load: (win) => (rendererUrl ? win.loadURL(`${rendererUrl}/overlay/index.html`) : win.loadFile(join(__dirname, '../renderer/overlay/index.html'))),
-  });
   const dogHost = createDogHost({ seed: Date.now() % 2 ** 31, sink: { send: (id, frame) => overlays.send(id, frame) } });
   let rawWindows: RawWindow[] = [];
 
@@ -127,7 +149,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
 
   // Until the tray arrives (T3.9) this is the way out: the overlay is click-through, so there is nothing to close.
   if (!e2e && !globalShortcut.register('Control+Alt+Q', () => app.quit())) console.error('Ctrl+Alt+Q is taken; quit from the terminal instead');
-  if (e2e) installDebug({ dogHost, tracker, overlays, session: studySession });
+  if (e2e) installDebug({ dogHost, tracker, overlays, session: studySession, bubbleHotkeyRegistered: () => globalShortcut.isRegistered(BUBBLE_HOTKEY) });
 
   displaysChanged();
   tracker.start();
@@ -150,6 +172,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       tracker.stop();
       idle.stop();
       studySession.dispose();
+      bubble.dispose();
       dogHost.dispose();
       overlays.dispose();
       controlWindow.dispose();

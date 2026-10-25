@@ -8,6 +8,12 @@ export interface OverlayManager {
   send: (displayId: number, frame: DogFrame | null) => void;
   /** Applies a hit-test message from an overlay renderer; ignores anything else. */
   handleHit: (sender: WebContents, message: unknown) => void;
+  /** Sends one message to every overlay (the one that has the dog is the one that draws a bubble). */
+  broadcast: (channel: string, payload?: unknown) => void;
+  /** True for the page of one of our overlays, so messages from anywhere else are ignored. */
+  isOverlay: (sender: WebContents) => boolean;
+  /** Gives one overlay keyboard focus, or hands it back. Overlays are unfocusable otherwise, so typing elsewhere is never stolen. */
+  setFocus: (sender: WebContents, on: boolean) => void;
   /** Native window handles of the overlays, so the tracker can leave them out. */
   hwnds: () => Set<number>;
   count: () => number;
@@ -91,6 +97,28 @@ export function createOverlayManager(opts: { preload: string; load: (w: BrowserW
       if (!isHitMessage(message)) return;
       for (const win of windows.values()) {
         if (!win.isDestroyed() && win.webContents === sender) win.setIgnoreMouseEvents(!message, { forward: true });
+      }
+    },
+    broadcast(channel, payload) {
+      for (const win of windows.values()) {
+        if (!win.isDestroyed() && !win.webContents.isLoading()) win.webContents.send(channel, payload);
+      }
+    },
+    isOverlay(sender) {
+      for (const win of windows.values()) if (!win.isDestroyed() && win.webContents === sender) return true;
+      return false;
+    },
+    setFocus(sender, on) {
+      for (const win of windows.values()) {
+        if (win.isDestroyed() || win.webContents !== sender) continue;
+        if (on) {
+          win.setFocusable(true);
+          win.focus();
+        } else {
+          // Windows hands focus back to the app the user was in; we never force focus onto another window ourselves.
+          win.blur();
+          win.setFocusable(false);
+        }
       }
     },
     hwnds() {
