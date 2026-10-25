@@ -47,7 +47,7 @@ export default tseslint.config(
   },
   {
     // The overlay renderer is sandboxed: no Electron or Node imports; it talks to main through window.barkOverlay.
-    files: ['src/renderer/**/*.ts'],
+    files: ['src/renderer/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',

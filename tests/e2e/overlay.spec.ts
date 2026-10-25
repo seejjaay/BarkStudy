@@ -4,7 +4,7 @@ let app: ElectronApplication;
 
 test.beforeEach(async () => {
   // VS Code sets ELECTRON_RUN_AS_NODE, which would make Electron behave as plain Node.
-  const env = { ...process.env, BARKSTUDY_E2E: '1' } as Record<string, string>;
+  const env = { ...process.env, BARKSTUDY_E2E: '1', BARKSTUDY_NO_CONTROL: '1' } as Record<string, string>;
   delete env['ELECTRON_RUN_AS_NODE'];
   app = await electron.launch({ args: ['.'], env });
   // The debug surface appears once main has finished starting up (koffi loading takes a moment).
