@@ -1,6 +1,7 @@
-// Manual OS-level check of the flashcard bubble (Windows only). It drives your REAL mouse and keyboard for about 15 seconds:
-// run it on an idle desktop with `npm run build` done first:  node scripts/os-check-bubble.cjs
-// Prints PASS/FAIL for click-through, pointer capture, keyboard focus in and out, Esc, and the Ctrl+Alt+A hotkey.
+// Manual OS-level check of the desktop behaviour (Windows only): the flashcard bubble (click-through, pointer capture, keyboard
+// focus in and out, Esc, Ctrl+Alt+A) and the Leave it hotkey (Ctrl+Alt+L). It drives your REAL mouse and keyboard for about
+// 20 seconds, so run it on an idle desktop after `npm run build`:  node scripts/os-check.cjs
+// Prints PASS/FAIL per check and exits non-zero if any failed.
 // Drives the REAL mouse and keyboard, so it only sends input when the OS confirms our overlay is where it should be.
 const fs = require('node:fs');
 const os = require('node:os');
@@ -210,6 +211,28 @@ async function click() {
     await moveTo(bubble.x + bubble.w / 2 + 3, bubble.y + 14);
     await sleep(300);
     check('with no bubble the old bubble area is click-through again', rootAt(bubble.x + bubble.w / 2, bubble.y + 12) !== overlayHwnd);
+
+    // 9. Leave it (Ctrl+Alt+L) pauses and resumes from any app, without taking the keyboard focus away from it.
+    const leave = await dbg('leaveIt');
+    check('Ctrl+Alt+L is registered', leave.conflict === false, `accelerator ${leave.accelerator}`);
+    if (leave.conflict === false) {
+      const fgBefore = fg();
+      const chord = async () => {
+        key(0x11, true);
+        key(0x12, true);
+        await sleep(40);
+        await tap(0x4c); // L
+        key(0x12, false);
+        key(0x11, false);
+      };
+      await chord();
+      const paused = await until(async () => (await dbg('sessionView')).paused === true);
+      check('Ctrl+Alt+L pauses the running session', !!paused);
+      check('and the app you were in keeps the keyboard', fg() === fgBefore, `foreground ${hex(fg())}, was ${hex(fgBefore)}`);
+      await chord();
+      const resumed = await until(async () => (await dbg('sessionView')).paused === false);
+      check('pressing it again resumes', !!resumed);
+    }
   } catch (e) {
     check('script ran to the end', false, String(e && e.stack ? e.stack.split('\n')[0] : e));
   } finally {

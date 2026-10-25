@@ -1,9 +1,9 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { app, globalShortcut, ipcMain, powerMonitor, screen, session, systemPreferences, type Display, type WebContents } from 'electron';
+import { app, globalShortcut, ipcMain, Notification, powerMonitor, screen, session, systemPreferences, type Display, type WebContents } from 'electron';
 import { DEFAULT_TUNING } from '../engine/tuning';
 import { BUBBLE_HOTKEY } from '../shared/bubble';
-import { CONTROL_CHANNEL } from '../shared/control';
+import { CONTROL_CHANNEL, type AppStatus } from '../shared/control';
 import type { DisplayInfo, RawWindow } from '../shared/geometry';
 import { toDipWindows } from '../shared/geometry';
 import { IPC } from '../shared/ipc';
@@ -14,12 +14,15 @@ import { installDebug } from './debug';
 import { createDogHost } from './dogHost';
 import { createFileAccess } from './files';
 import { createIdleMonitor } from './idle';
+import { createLeaveIt } from './leaveIt';
 import { createLibrary } from './library';
 import { hardenWebContents, installNetworkGuard, UI_PARTITION } from './network';
 import { createOverlayManager } from './overlay';
 import { createSessionController } from './session';
 import { createStorage } from './storage/io';
 import { createSuppress } from './suppress';
+import { createTray } from './tray';
+import { runTrayAction } from './trayModel';
 import { createTracker, lazyWin32 } from './tracker/tracker';
 import { realWin32 } from './tracker/win32';
 
@@ -55,11 +58,45 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
     load: (win) => (rendererUrl ? win.loadURL(`${rendererUrl}/overlay/index.html`) : win.loadFile(join(__dirname, '../renderer/overlay/index.html'))),
   });
 
+  const notify = (message: string): void => {
+    if (Notification.isSupported()) new Notification({ title: 'BarkStudy', body: message, silent: true }).show();
+  };
+  const appStatus = (): AppStatus => ({ trackerDown, leaveItConflict: leaveIt.conflict, leaveItLabel: leaveIt.accelerator ?? library.getSettings().leaveItHotkey });
+  const publishStatus = (): void => {
+    controlWindow.send({ type: 'status', ...appStatus() });
+    appTray.refresh();
+  };
+
   const studySession = createSessionController({
     library,
     seed: Date.now() % 2 ** 31,
-    publish: (view) => controlWindow.send({ type: 'session', view }),
+    publish: (view) => {
+      controlWindow.send({ type: 'session', view });
+      appTray.refresh();
+    },
     publishBubble: (state) => bubble.onBubbleChanged(state),
+  });
+  // Leave it is registered from the saved setting, and is always on; the tray menu offers the same action.
+  const leaveIt = createLeaveIt({
+    session: studySession,
+    hotkeys: {
+      register: (accelerator, onPress) => globalShortcut.register(accelerator, onPress),
+      unregister: (accelerator) => globalShortcut.unregister(accelerator),
+    },
+    notify,
+    onConflictChange: () => publishStatus(),
+  });
+  const appTray = createTray({
+    inputs: () => ({
+      view: studySession.view(),
+      decks: library.listDecks(),
+      leaveItLabel: leaveIt.accelerator ?? library.getSettings().leaveItHotkey,
+      leaveItConflict: leaveIt.conflict,
+      trackerDown,
+    }),
+    onOpen: () => controlWindow.show(),
+    onAction: (action) =>
+      void runTrayAction(action, { session: studySession, library, openControl: () => controlWindow.show(), quit: () => app.quit(), notify }).then(() => appTray.refresh()),
   });
   const bubble = createBubbleHost({
     session: studySession,
@@ -83,12 +120,14 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
     library,
     session: studySession,
     files: createFileAccess(() => controlWindow.window()),
-    trackerDown: () => trackerDown,
+    status: appStatus,
   });
-  ipcMain.handle(CONTROL_CHANNEL.call, (event, message: unknown) => {
+  ipcMain.handle(CONTROL_CHANNEL.call, async (event, message: unknown) => {
     if (!controlWindow.isOwn(event.sender)) throw new Error('not the control window');
     const m = typeof message === 'object' && message !== null ? (message as { op?: unknown; args?: unknown }) : {};
-    return handlers.handle(m.op, m.args);
+    const result = await handlers.handle(m.op, m.args);
+    appTray.refresh(); // decks may have been added or removed
+    return result;
   });
   app.on('second-instance', () => controlWindow.show());
 
@@ -139,7 +178,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       console.error('window tracker is down; roaming the display edges', err);
       trackerDown = true;
       dogHost.setTrackerDown();
-      controlWindow.send({ type: 'status', trackerDown: true });
+      publishStatus();
     },
   });
 
@@ -147,9 +186,20 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
   screen.on('display-removed', displaysChanged);
   screen.on('display-metrics-changed', displaysChanged);
 
-  // Until the tray arrives (T3.9) this is the way out: the overlay is click-through, so there is nothing to close.
-  if (!e2e && !globalShortcut.register('Control+Alt+Q', () => app.quit())) console.error('Ctrl+Alt+Q is taken; quit from the terminal instead');
-  if (e2e) installDebug({ dogHost, tracker, overlays, session: studySession, bubbleHotkeyRegistered: () => globalShortcut.isRegistered(BUBBLE_HOTKEY) });
+  // The tray is the way out now: the overlay is click-through, so there is nothing to close.
+  leaveIt.register(library.getSettings().leaveItHotkey);
+  appTray.refresh();
+  if (e2e) {
+    installDebug({
+      dogHost,
+      tracker,
+      overlays,
+      session: studySession,
+      bubbleHotkeyRegistered: () => globalShortcut.isRegistered(BUBBLE_HOTKEY),
+      tray: appTray,
+      leaveIt,
+    });
+  }
 
   displaysChanged();
   tracker.start();
@@ -173,6 +223,8 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       idle.stop();
       studySession.dispose();
       bubble.dispose();
+      leaveIt.dispose();
+      appTray.dispose();
       dogHost.dispose();
       overlays.dispose();
       controlWindow.dispose();

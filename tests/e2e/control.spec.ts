@@ -25,11 +25,14 @@ async function quit(): Promise<void> {
   app = null;
 }
 
-function debug<T>(method: string): Promise<T> {
-  return app!.evaluate((_electron, m: string) => {
-    const d = (globalThis as unknown as { __barkDebug: Record<string, () => unknown> }).__barkDebug;
-    return d[m]!();
-  }, method) as Promise<T>;
+function debug<T>(method: string, ...args: unknown[]): Promise<T> {
+  return app!.evaluate(
+    (_electron, p: { method: string; args: unknown[] }) => {
+      const d = (globalThis as unknown as { __barkDebug: Record<string, (...a: unknown[]) => unknown> }).__barkDebug;
+      return d[p.method]!(...p.args);
+    },
+    { method, args },
+  ) as Promise<T>;
 }
 
 test.beforeEach(async () => {
@@ -327,4 +330,65 @@ test('a blank answer is not submitted, and an answer given in the control window
   await page.getByRole('button', { name: 'Show answer' }).click();
   await page.getByRole('button', { name: 'Got it' }).click();
   await expect(bubble).toBeHidden();
+});
+
+type Spec = { id?: string; label: string; enabled?: boolean; submenu?: Spec[]; hint?: string };
+const flatSpec = (items: Spec[]): Spec[] => items.flatMap((i) => [i, ...(i.submenu ? flatSpec(i.submenu) : [])]);
+const trayLabels = async () => flatSpec(await debug<Spec[]>('trayMenu')).map((i) => i.label);
+const trayIds = async () => flatSpec(await debug<Spec[]>('trayMenu')).flatMap((i) => (i.id ? [i.id] : []));
+
+test('the tray menu follows the app: it starts a session, pauses, stays, and ends it', async () => {
+  expect(await trayLabels()).toContain('Start session (add a deck with cards first)');
+  expect(await trayLabels()).toContain('No session running');
+
+  await newDeckByPaste('Capitals', 'France,Paris\nPeru,Lima');
+  await expect.poll(trayLabels).toContain('Start session');
+  expect(await trayLabels()).toContain('Capitals (2 cards)');
+  const startId = (await trayIds()).find((id) => id.startsWith('start:'))!;
+
+  await debug('trayRun', startId);
+  await expect(page.getByText('Studying Capitals — Running')).toBeVisible(); // the strip shows on every tab but Study
+  await nav('Study').click();
+  await expect(page.getByText('Running', { exact: true })).toBeVisible();
+  await expect.poll(trayLabels).toContain('Studying Capitals');
+  expect(await trayIds()).toEqual(['pause', 'stay-on:15', 'stay-on:25', 'stay-on:50', 'end', 'open', 'quit']);
+
+  await debug('trayRun', 'pause');
+  await expect(page.getByText('Paused', { exact: true })).toBeVisible();
+  expect((await debug<Spec[]>('trayMenu')).find((i) => i.id === 'resume')).toMatchObject({ label: 'Resume', hint: 'Ctrl+Alt+L' });
+  await debug('trayRun', 'resume');
+  await debug('trayRun', 'stay-on:15');
+  await expect(page.getByText('Staying', { exact: true })).toBeVisible();
+  await expect.poll(trayIds).toContain('stay-off');
+  await debug('trayRun', 'stay-off');
+  await expect(page.getByText('Running', { exact: true })).toBeVisible();
+
+  await debug('trayRun', 'bogus-id'); // anything that is not one of ours is ignored
+  await debug('trayRun', 'stay-on:7');
+  await expect(page.getByText('Running', { exact: true })).toBeVisible();
+
+  await debug('trayRun', 'end');
+  await expect(page.getByRole('heading', { name: 'Session finished' })).toBeVisible();
+  await expect.poll(trayLabels).toContain('Start session');
+  await nav('History').click();
+  await expect(page.getByRole('row').filter({ hasText: 'Capitals' })).toBeVisible();
+});
+
+test('a Leave it shortcut that another app owns shows a banner and a tray note, and clears when it is freed', async () => {
+  expect(await debug('leaveIt')).toEqual({ accelerator: 'Ctrl+Alt+L', conflict: false });
+  await expect(page.getByText('is used by another app')).toBeHidden();
+
+  await debug('leaveItReregister', 'Ctrl+Alt+K'); // let go of Ctrl+Alt+L
+  const foreign = await app!.evaluate(({ globalShortcut }) => globalShortcut.register('Ctrl+Alt+L', () => undefined));
+  expect(foreign).toBe(true); // another app now owns it
+  expect(await debug<boolean>('leaveItReregister', 'Ctrl+Alt+L')).toBe(false);
+
+  await expect(page.getByText('Ctrl+Alt+L is used by another app')).toBeVisible();
+  expect(await debug('leaveIt')).toEqual({ accelerator: 'Ctrl+Alt+L', conflict: true });
+  await expect.poll(trayLabels).toContain('Ctrl+Alt+L is used by another app, so Leave it works from this menu only.');
+
+  await app!.evaluate(({ globalShortcut }) => globalShortcut.unregister('Ctrl+Alt+L'));
+  expect(await debug<boolean>('leaveItReregister', 'Ctrl+Alt+L')).toBe(true);
+  await expect(page.getByText('is used by another app')).toBeHidden();
+  expect(await debug('leaveIt')).toEqual({ accelerator: 'Ctrl+Alt+L', conflict: false });
 });
