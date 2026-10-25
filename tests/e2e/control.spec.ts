@@ -254,3 +254,77 @@ test('cards can be added, edited, searched, deleted with undo, and are read-only
   await expect(page.getByRole('button', { name: 'Edit chien' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Delete chien' })).toBeDisabled();
 });
+
+const overlay = () => app!.windows().find((w) => w.url().includes('overlay'))!;
+
+test('the bubble: type an answer, Esc hides it without answering, the chip brings it back, show-answer and self-grade work', async () => {
+  await newDeckByPaste('Capitals', 'France,Paris\nPeru,Lima\nJapan,Tokyo');
+  await nav('Study').click();
+  await page.getByRole('button', { name: 'Start session' }).click();
+  await expect(page.getByText('Running', { exact: true })).toBeVisible();
+  expect(await debug<boolean>('bubbleHotkeyRegistered')).toBe(false); // nothing is waiting, so Ctrl+Alt+A belongs to everyone else
+
+  // A typed answer, loosely matched.
+  await debug('checkin');
+  const bubble = overlay().locator('#bubble');
+  await expect(bubble).toBeVisible();
+  await expect(bubble).toContainText('France');
+  expect(await debug<boolean>('bubbleHotkeyRegistered')).toBe(true);
+  expect(await overlay().locator('body').innerText()).not.toContain('Paris'); // the answer is not in the overlay until it is shown
+  await overlay().locator('#bubble-input').fill('  PARIS ');
+  await overlay().keyboard.press('Enter');
+  await expect(overlay().locator('#bubble-fb')).toHaveText('Correct! Pandesal got a treat.');
+  await expect(overlay().locator('#bubble-fb')).toHaveAttribute('data-tone', 'right');
+  await expect(page.getByText('Answered').locator('xpath=following-sibling::dd')).toHaveText('1');
+  await expect(page.getByText('Treats').locator('xpath=following-sibling::dd')).toHaveText('1');
+  expect(await debug<boolean>('bubbleHotkeyRegistered')).toBe(false);
+  await overlay().keyboard.press('Enter'); // dismisses the verdict early
+  await expect(bubble).toBeHidden();
+
+  // Esc dismisses without answering; the question stays pending and comes back from the chip.
+  await debug('checkin');
+  await expect(bubble).toContainText('Peru');
+  await overlay().keyboard.press('Escape');
+  await expect(bubble).toBeHidden();
+  await expect(overlay().locator('#bubble-chip')).toBeVisible();
+  expect(await debug<{ open: boolean } | null>('bubbleState')).toMatchObject({ open: false });
+  expect(await debug<boolean>('bubbleHotkeyRegistered')).toBe(true);
+  await expect(page.getByText('Answered').locator('xpath=following-sibling::dd')).toHaveText('1');
+  await overlay().locator('#bubble-chip').click();
+  await expect(bubble).toContainText('Peru');
+
+  // A wrong answer is still an answer: it ends the question, shows the right answer, and earns no treat.
+  await overlay().locator('#bubble-input').fill('Cusco');
+  await overlay().getByRole('button', { name: 'Check' }).click();
+  await expect(overlay().locator('#bubble-fb')).toHaveText('Not quite. It is “Lima”.');
+  await expect(page.getByText('Answered').locator('xpath=following-sibling::dd')).toHaveText('2');
+  await expect(page.getByText('Treats').locator('xpath=following-sibling::dd')).toHaveText('1');
+
+  // Show answer, then self-grade.
+  await overlay().keyboard.press('Escape');
+  await debug('checkin');
+  await expect(bubble).toContainText('Japan');
+  await overlay().getByRole('button', { name: 'Show answer' }).click();
+  await expect(overlay().locator('#bubble-a')).toHaveText('Tokyo');
+  await overlay().getByRole('button', { name: 'Got it' }).click();
+  await expect(overlay().locator('#bubble-fb')).toContainText('Nice, you got it.');
+  await expect(page.getByText('Treats').locator('xpath=following-sibling::dd')).toHaveText('2');
+  expect(await debug('bubbleState')).toBeNull();
+});
+
+test('a blank answer is not submitted, and an answer given in the control window closes the bubble', async () => {
+  await newDeckByPaste('Capitals', 'France,Paris');
+  await nav('Study').click();
+  await page.getByRole('button', { name: 'Start session' }).click();
+  await debug('checkin');
+  const bubble = overlay().locator('#bubble');
+  await expect(bubble).toBeVisible();
+  await overlay().locator('#bubble-input').fill('   ');
+  await overlay().keyboard.press('Enter');
+  await expect(bubble).toContainText('France');
+  await expect(page.getByText('Answered').locator('xpath=following-sibling::dd')).toHaveText('0');
+
+  await page.getByRole('button', { name: 'Show answer' }).click();
+  await page.getByRole('button', { name: 'Got it' }).click();
+  await expect(bubble).toBeHidden();
+});

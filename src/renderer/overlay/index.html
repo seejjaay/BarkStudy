@@ -7,10 +7,55 @@
     <style>
       html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
       canvas { position: absolute; inset: 0; }
+      /* The bubble floats over whatever is on screen, so it carries its own light background and dark outline. */
+      #bubble, #bubble-chip {
+        position: absolute; box-sizing: border-box; font: 14px/1.4 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+        color: #3b2a1a; background: #fffaf1; border: 2px solid #3b2a1a; border-radius: 14px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+      }
+      #bubble { width: 320px; padding: 12px 14px; display: grid; gap: 8px; }
+      #bubble[hidden], #bubble-chip[hidden], #bubble [hidden] { display: none !important; }
+      #bubble .eyebrow { margin: 0; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #6f5a45; }
+      #bubble .q { margin: 0; font-size: 17px; font-weight: 700; overflow-wrap: anywhere; max-height: 7.5em; overflow: auto; }
+      #bubble .a { margin: 0; font-size: 15px; color: #9c5f23; overflow-wrap: anywhere; max-height: 6em; overflow: auto; }
+      #bubble form { display: flex; gap: 6px; }
+      #bubble input { flex: 1; min-width: 0; font: inherit; padding: 6px 8px; border: 1px solid #b9a68f; border-radius: 8px; background: #fff; color: inherit; }
+      #bubble button, #bubble-chip { font: inherit; cursor: pointer; border: 1px solid #9c5f23; border-radius: 8px; background: #fff; color: #3b2a1a; padding: 5px 10px; }
+      #bubble button.primary { background: #c98b4b; font-weight: 600; }
+      #bubble .buttons { display: flex; gap: 6px; }
+      #bubble .fb { margin: 0; font-weight: 600; }
+      #bubble .fb[data-tone='right']::before { content: '✓ '; }
+      #bubble .fb[data-tone='close']::before { content: '≈ '; }
+      #bubble .fb[data-tone='wrong']::before { content: '✗ '; }
+      #bubble .hint { margin: 0; font-size: 11px; color: #6f5a45; }
+      #bubble-chip { padding: 6px 12px; border-radius: 999px; font-size: 13px; }
+      :focus-visible { outline: 3px solid #1f5fbf; outline-offset: 2px; }
+      .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     </style>
   </head>
   <body>
     <canvas id="stage"></canvas>
+    <div id="bubble" role="dialog" aria-labelledby="bubble-q" hidden>
+      <p class="eyebrow">Pandesal asks</p>
+      <p id="bubble-q" class="q"></p>
+      <form id="bubble-form" autocomplete="off">
+        <label class="sr" for="bubble-input">Your answer</label>
+        <input id="bubble-input" type="text" maxlength="2000" placeholder="Type your answer, then Enter" />
+        <button type="submit" class="primary">Check</button>
+      </form>
+      <div id="bubble-reveal-row" class="buttons"><button id="bubble-reveal" type="button">Show answer</button></div>
+      <div id="bubble-answer-box" hidden>
+        <p class="eyebrow">Answer</p>
+        <p id="bubble-a" class="a"></p>
+        <div class="buttons">
+          <button id="bubble-good" type="button" class="primary">Got it</button>
+          <button id="bubble-again" type="button">Missed it</button>
+        </div>
+      </div>
+      <p id="bubble-fb" class="fb" role="status" aria-live="polite" hidden></p>
+      <p id="bubble-hint" class="hint">Esc hides this. Ctrl+Alt+A brings it back.</p>
+    </div>
+    <button id="bubble-chip" type="button" hidden>A question is waiting. Click, or press Ctrl+Alt+A</button>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

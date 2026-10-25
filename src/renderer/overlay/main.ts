@@ -1,6 +1,7 @@
 import type { DogFrame } from '../../shared/ipc';
+import { createBubbleView } from './bubble';
 import { drawDog } from './draw';
-import { dogHit } from './hit';
+import { dogHit, inside } from './hit';
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement | null;
 const ctx = canvas?.getContext('2d');
@@ -34,18 +35,24 @@ function queueDraw(): void {
   });
 }
 
-// Tell main whether the cursor is over the visible dog; main then stops or resumes ignoring mouse events.
+// Tell main whether the cursor is over the visible dog or the bubble; main then stops or resumes ignoring mouse events.
 function updateOver(): void {
-  const now = pointer !== null && dogHit(frame, pointer.x, pointer.y);
+  const now = pointer !== null && (dogHit(frame, pointer.x, pointer.y) || bubble.hitRects().some((r) => inside(r, pointer!.x, pointer!.y)));
   if (now === over) return;
   over = now;
   window.barkOverlay.hit(over);
 }
 
+const bubble = createBubbleView(updateOver);
+
 window.barkOverlay.onFrame((f) => {
   frame = f;
   queueDraw();
+  bubble.setFrame(f);
   updateOver(); // the dog may have walked out from under a still cursor
+});
+document.addEventListener('mousedown', (e) => {
+  if (dogHit(frame, e.clientX, e.clientY)) bubble.dogClicked();
 });
 document.addEventListener('mousemove', (e) => {
   pointer = { x: e.clientX, y: e.clientY };
