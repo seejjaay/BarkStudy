@@ -1,9 +1,10 @@
 import type { SessionView, StartRequest, DeckSummary } from '../../shared/control';
+import { sessionKind, type SessionKind } from '../../shared/sessionKind';
 import { formatClock } from './text';
 
 type Running = Extract<SessionView, { phase: 'running' }>;
 
-export type BadgeKind = 'running' | 'paused' | 'stay' | 'away' | 'quiet';
+export type BadgeKind = SessionKind;
 
 /** The state is always named in words; colour only reinforces it. */
 export interface Badge {
@@ -12,16 +13,22 @@ export interface Badge {
   detail: string;
 }
 
-/** What is holding Pandesal back, most binding first: Leave it, then a Stay, then the user being away, then a quiet app in front. */
 export function badgeFor(v: Running): Badge {
-  if (v.paused) return { kind: 'paused', label: 'Paused', detail: 'Pandesal is on Leave it. Nothing will interrupt you until you resume.' };
-  if (v.stay) {
-    const left = v.stayLeftMs === null ? '' : `${formatClock(v.stayLeftMs)} left. `;
-    return { kind: 'stay', label: 'Staying', detail: `${left}Pandesal is sitting quietly for your focus block.` };
+  const kind = sessionKind(v);
+  switch (kind) {
+    case 'paused':
+      return { kind, label: 'Paused', detail: 'Pandesal is on Leave it. Nothing will interrupt you until you resume.' };
+    case 'stay': {
+      const left = v.stayLeftMs === null ? '' : `${formatClock(v.stayLeftMs)} left. `;
+      return { kind, label: 'Staying', detail: `${left}Pandesal is sitting quietly for your focus block.` };
+    }
+    case 'away':
+      return { kind, label: 'Away', detail: 'You look idle or the screen is locked, so check-ins wait for you.' };
+    case 'quiet':
+      return { kind, label: 'Quiet', detail: 'A full-screen or excluded app is in front, so Pandesal is staying out of the way.' };
+    case 'running':
+      return { kind, label: 'Running', detail: v.card ? 'Pandesal is waiting for your answer.' : 'The next check-in comes on its own.' };
   }
-  if (v.away) return { kind: 'away', label: 'Away', detail: 'You look idle or the screen is locked, so check-ins wait for you.' };
-  if (v.suppressed) return { kind: 'quiet', label: 'Quiet', detail: 'A full-screen or excluded app is in front, so Pandesal is staying out of the way.' };
-  return { kind: 'running', label: 'Running', detail: v.card ? 'Pandesal is waiting for your answer.' : 'The next check-in comes on its own.' };
 }
 
 export const MIN_GAP = 1;
