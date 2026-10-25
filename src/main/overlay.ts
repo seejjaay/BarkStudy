@@ -1,6 +1,6 @@
 import { BrowserWindow, type Display, type WebContents } from 'electron';
 import { IPC, isHitMessage, type DogFrame } from '../shared/ipc';
-import { windowIcon } from './icon';
+import { windowIcon } from './windowIcon';
 import { UI_PARTITION } from './network';
 
 export interface OverlayManager {

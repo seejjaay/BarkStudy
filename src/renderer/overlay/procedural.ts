@@ -1,7 +1,7 @@
 import type { DogFrame } from '../../shared/ipc';
 import type { Mood } from '../../shared/mood';
-import { SIDE_HEADING } from './effects';
-import type { DogRenderer } from './renderer';
+import { SIDE_HEADING, dirtParticles, pawPrints } from './effects';
+import type { DogRenderer, EffectsView } from './renderer';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -252,8 +252,8 @@ export function drawDog(ctx: Ctx, f: DogFrame, tMs: number): void {
   ctx.restore();
 }
 
-/** Dirt flung up by digging. Not clipped: it flies over whatever is on screen. */
-export function paintDirt(ctx: Ctx, particles: readonly { x: number; y: number; size: number; alpha: number }[]): void {
+/** Dirt flung up by digging, in front of him. */
+function paintDirt(ctx: Ctx, particles: readonly { x: number; y: number; size: number; alpha: number }[]): void {
   ctx.save();
   ctx.fillStyle = DIRT;
   for (const p of particles) {
@@ -263,8 +263,8 @@ export function paintDirt(ctx: Ctx, particles: readonly { x: number; y: number; 
   ctx.restore();
 }
 
-/** Paw prints, each a pad and three toes pointing along `angle`. Not clipped. */
-export function paintPrints(ctx: Ctx, prints: readonly { x: number; y: number; angle: number; alpha: number }[]): void {
+/** Paw prints, each a pad and three toes pointing along `angle`. */
+function paintPrints(ctx: Ctx, prints: readonly { x: number; y: number; angle: number; alpha: number }[]): void {
   for (const p of prints) {
     if (p.alpha <= 0) continue;
     ctx.save();
@@ -279,4 +279,17 @@ export function paintPrints(ctx: Ctx, prints: readonly { x: number; y: number; a
   }
 }
 
-export const proceduralRenderer: DogRenderer = { draw: drawDog };
+/** Dirt flies from his front paws; prints go behind him and are not drawn under reduced motion, as he does not run the lap then. */
+function drawEffects(ctx: Ctx, view: EffectsView, layer: 'behind' | 'front'): void {
+  if (layer === 'behind') {
+    const p = view.prints;
+    if (p) paintPrints(ctx, pawPrints(p.effect.seed, p.effect.rect, view.reducedMotion ? 0 : p.effect.elapsedMs, p.fadeMs, p.from));
+    return;
+  }
+  const f = view.frame;
+  if (f?.effect?.kind === 'dig') {
+    paintDirt(ctx, dirtParticles(f.effect.seed, f.effect.elapsedMs, { x: f.x + f.facing * 22, y: f.y }, view.reducedMotion));
+  }
+}
+
+export const proceduralRenderer: DogRenderer = { draw: drawDog, drawEffects };

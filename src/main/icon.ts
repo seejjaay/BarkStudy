@@ -1,5 +1,3 @@
-import { nativeImage, type NativeImage } from 'electron';
-
 /**
  * The app icon, drawn in code so there is no image file to ship: a bread-brown roll with two darker ears, in BGRA
  * byte order as `nativeImage.createFromBitmap` expects on Windows. It is the tray icon and the window icon.
@@ -33,12 +31,4 @@ export function makeIcon(size: number): Buffer {
     }
   }
   return buf;
-}
-
-let windowImage: NativeImage | undefined;
-
-/** The icon for the control window and the overlays, made once. */
-export function windowIcon(): NativeImage {
-  windowImage ??= nativeImage.createFromBitmap(makeIcon(256), { width: 256, height: 256 });
-  return windowImage;
 }

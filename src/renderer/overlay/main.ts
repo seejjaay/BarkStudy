@@ -1,9 +1,9 @@
 import type { DogFrame, EffectState } from '../../shared/ipc';
 import { createBubbleView } from './bubble';
-import { PRINT_FADE_MS, dirtParticles, lapOrigin, needsAnimation, pawPrints } from './effects';
+import { PRINT_FADE_MS, lapOrigin, needsAnimation } from './effects';
 import { dogHit, inside } from './hit';
-import { paintDirt, paintPrints, proceduralRenderer } from './procedural';
-import type { DogRenderer } from './renderer';
+import { proceduralRenderer } from './procedural';
+import type { DogRenderer, EffectsView } from './renderer';
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement | null;
 const ctx = canvas?.getContext('2d');
@@ -52,22 +52,19 @@ function tick(t: number): void {
 function render(t: number): void {
   const c = ctx!;
   c.clearRect(0, 0, window.innerWidth, window.innerHeight);
-  const reduced = isReduced();
+  const reducedMotion = isReduced();
 
-  // Prints go under him; they are not clipped, so they show over the windows he ran round.
+  let prints: EffectsView['prints'] = null;
   if (trail) {
     const fadeMs = trail.endedAt === null ? 0 : Math.max(0, t - trail.endedAt);
     if (fadeMs >= PRINT_FADE_MS) trail = null;
-    // Under reduced motion he does not run the lap, so he lays no prints.
-    else paintPrints(c, pawPrints(trail.effect.seed, trail.effect.rect, reduced ? 0 : trail.effect.elapsedMs, fadeMs, trail.from));
+    else prints = { effect: trail.effect, from: trail.from, fadeMs };
   }
-  if (frame) {
-    renderer.draw(c, { ...frame, reducedMotion: reduced }, t);
-    // Dirt flies from his front paws, over him and over the window.
-    if (frame.effect?.kind === 'dig') {
-      paintDirt(c, dirtParticles(frame.effect.seed, frame.effect.elapsedMs, { x: frame.x + frame.facing * 22, y: frame.y }, reduced));
-    }
-  }
+  // The renderer draws the effects behind him and in front of him, and him in between; only he is clipped.
+  const view: EffectsView = { frame, prints, reducedMotion };
+  renderer.drawEffects(c, view, 'behind');
+  if (frame) renderer.draw(c, { ...frame, reducedMotion }, t);
+  renderer.drawEffects(c, view, 'front');
 }
 
 /** Remembers a laps effect for its prints, or starts the fade once there is none. Call after `frame` is set. */

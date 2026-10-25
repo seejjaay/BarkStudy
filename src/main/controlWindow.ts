@@ -1,6 +1,6 @@
 import { BrowserWindow, type WebContents } from 'electron';
 import { CONTROL_CHANNEL, type ControlEvent } from '../shared/control';
-import { windowIcon } from './icon';
+import { windowIcon } from './windowIcon';
 import { UI_PARTITION } from './network';
 
 export interface ControlWindow {

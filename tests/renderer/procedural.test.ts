@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { DogFrame } from '../../src/shared/ipc';
 import type { Mood } from '../../src/shared/mood';
-import { drawDog, paintDirt, paintPrints, proceduralRenderer } from '../../src/renderer/overlay/procedural';
+import { PRINT_FADE_MS, dirtParticles } from '../../src/renderer/overlay/effects';
+import { drawDog, proceduralRenderer } from '../../src/renderer/overlay/procedural';
+import type { EffectsView } from '../../src/renderer/overlay/renderer';
 
 type Call = [string, ...unknown[]];
 
@@ -175,27 +177,70 @@ describe('proceduralRenderer', () => {
   });
 });
 
-describe('paintDirt and paintPrints', () => {
-  it('paintDirt fills one speck per particle, and balances save and restore', () => {
+describe('drawEffects', () => {
+  const rect = { x: 100, y: 100, width: 300, height: 200 };
+  const laps = { kind: 'laps', seed: 5, elapsedMs: 3000, rect } as const;
+  const dig = { kind: 'dig', seed: 5, elapsedMs: 900, rect } as const;
+  const lapsFrame = frame({ pose: 'run', side: 'top', mood: 'zoomies', effect: laps });
+  const digFrame = frame({ pose: 'dig', mood: 'dig', effect: dig });
+
+  const effects = (view: Partial<EffectsView>, layer: 'behind' | 'front') => {
     const { ctx, calls } = fakeCtx();
-    paintDirt(ctx, [
-      { x: 1, y: 2, size: 3, alpha: 1 },
-      { x: 4, y: 5, size: 2, alpha: 0.4 },
-    ]);
-    const n = names(calls);
-    expect(n.filter((x) => x === 'fillRect')).toHaveLength(2);
-    expect(n.filter((x) => x === 'save').length).toBe(n.filter((x) => x === 'restore').length);
+    proceduralRenderer.drawEffects(ctx, { frame: null, prints: null, reducedMotion: false, ...view }, layer);
+    return calls;
+  };
+  const painted = (calls: Call[]) => names(calls).filter((n) => ['fill', 'fillRect', 'stroke'].includes(n));
+  const prints = (calls: Call[]) => names(calls).filter((n) => n === 'translate').length;
+  const specks = (calls: Call[]) => names(calls).filter((n) => n === 'fillRect').length;
+
+  it('draws nothing for no effect, in either layer', () => {
+    for (const layer of ['behind', 'front'] as const) {
+      expect(painted(effects({}, layer))).toEqual([]);
+      expect(painted(effects({ frame: frame() }, layer))).toEqual([]);
+    }
   });
 
-  it('paintPrints skips prints that have faded out, and does not clip', () => {
-    const { ctx, calls } = fakeCtx();
-    paintPrints(ctx, [
-      { x: 10, y: 10, angle: 0, alpha: 1 },
-      { x: 20, y: 20, angle: 1, alpha: 0 },
-    ]);
-    const n = names(calls);
-    expect(n.filter((x) => x === 'translate')).toHaveLength(1);
-    expect(n).not.toContain('clip');
-    expect(n.filter((x) => x === 'save').length).toBe(n.filter((x) => x === 'restore').length);
+  it('lays paw prints behind him for laps', () => {
+    const calls = effects({ frame: lapsFrame, prints: { effect: laps, from: 40, fadeMs: 0 } }, 'behind');
+    expect(prints(calls)).toBeGreaterThan(0);
+    expect(specks(calls)).toBe(0);
+    expect(painted(effects({ frame: lapsFrame, prints: { effect: laps, from: 40, fadeMs: 0 } }, 'front'))).toEqual([]);
+  });
+
+  it('throws dirt in front of him for a dig, one speck per particle', () => {
+    const calls = effects({ frame: digFrame }, 'front');
+    expect(specks(calls)).toBe(dirtParticles(dig.seed, dig.elapsedMs, { x: digFrame.x + digFrame.facing * 22, y: digFrame.y }, false).length);
+    expect(specks(calls)).toBeGreaterThan(0);
+    expect(prints(calls)).toBe(0);
+    expect(painted(effects({ frame: digFrame }, 'behind'))).toEqual([]);
+  });
+
+  it('keeps prints on show while they fade, after the effect is gone from the frame, and paints none once faded out', () => {
+    const fading = (fadeMs: number) => effects({ frame: frame(), prints: { effect: laps, from: 40, fadeMs } }, 'behind');
+    expect(prints(fading(750))).toBeGreaterThan(0);
+    expect(prints(fading(PRINT_FADE_MS))).toBe(0);
+    expect(prints(fading(PRINT_FADE_MS * 2))).toBe(0);
+  });
+
+  it('prints still show when the dog has left this display, while they fade', () => {
+    expect(prints(effects({ frame: null, prints: { effect: laps, from: 40, fadeMs: 300 } }, 'behind'))).toBeGreaterThan(0);
+  });
+
+  it('reduced motion: dirt holds still, and no prints are laid since he does not run', () => {
+    const at = (elapsedMs: number) => JSON.stringify(effects({ frame: frame({ pose: 'dig', effect: { ...dig, elapsedMs } }), reducedMotion: true }, 'front'));
+    expect(at(0)).toBe(at(777));
+    expect(specks(effects({ frame: digFrame, reducedMotion: true }, 'front'))).toBeGreaterThan(0);
+    expect(prints(effects({ frame: lapsFrame, prints: { effect: laps, from: 40, fadeMs: 0 }, reducedMotion: true }, 'behind'))).toBe(0);
+  });
+
+  it('does not clip, and balances save and restore', () => {
+    for (const calls of [
+      effects({ frame: lapsFrame, prints: { effect: laps, from: 40, fadeMs: 0 } }, 'behind'),
+      effects({ frame: digFrame }, 'front'),
+    ]) {
+      const n = names(calls);
+      expect(n).not.toContain('clip');
+      expect(n.filter((x) => x === 'save').length).toBe(n.filter((x) => x === 'restore').length);
+    }
   });
 });
