@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type FormEvent } from 'react';
 import type { DeckSummary, LibrarySnapshot } from '../../shared/control';
 import { api, attempt } from './api';
+import { CardsView } from './cards';
 import { ImportDialog } from './import-dialog';
 import { useToast } from './toast';
 import { errorText, importMessage, plural } from './text';
@@ -25,6 +26,7 @@ export function DecksView({
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [importing, setImporting] = useState<{ deckId: string | null } | null>(null);
+  const [openDeckId, setOpenDeckId] = useState<string | null>(null);
   const newButton = useRef<HTMLButtonElement>(null);
   const createId = useId();
   const renameId = useId();
@@ -85,6 +87,34 @@ export function DecksView({
     const r = await attempt(api.call('deck:export', { id: deck.id }));
     if (!r.ok) toast(errorText(r.error), { kind: 'error' });
     else if (r.value) toast(`Exported “${deck.name}” to ${r.value.path}.`);
+  }
+
+  const dialog = importing && (
+    <ImportDialog
+      decks={decks}
+      initialDeckId={importing.deckId}
+      onClose={() => setImporting(null)}
+      onImported={(report, deckName) => {
+        toast(importMessage(report, deckName));
+        void refresh();
+      }}
+    />
+  );
+
+  const openDeck = decks.find((d) => d.id === openDeckId);
+  if (openDeck) {
+    return (
+      <>
+        <CardsView
+          deck={openDeck}
+          inUse={openDeck.id === runningDeckId}
+          onBack={() => setOpenDeckId(null)}
+          refresh={refresh}
+          onImport={() => setImporting({ deckId: openDeck.id })}
+        />
+        {dialog}
+      </>
+    );
   }
 
   return (
@@ -195,6 +225,9 @@ export function DecksView({
                   </div>
                 )}
                 <div className="actions">
+                  <button type="button" className="btn btn-quiet" onClick={() => setOpenDeckId(d.id)}>
+                    Cards
+                  </button>
                   <button type="button" className="btn btn-quiet" disabled={d.cardCount === 0} title={d.cardCount === 0 ? 'Add cards first' : undefined} onClick={() => study(d.id)}>
                     Study
                   </button>
@@ -226,17 +259,7 @@ export function DecksView({
         </ul>
       )}
 
-      {importing && (
-        <ImportDialog
-          decks={decks}
-          initialDeckId={importing.deckId}
-          onClose={() => setImporting(null)}
-          onImported={(report, deckName) => {
-            toast(importMessage(report, deckName));
-            void refresh();
-          }}
-        />
-      )}
+      {dialog}
     </section>
   );
 }

@@ -207,3 +207,50 @@ test('quitting mid-session still saves the session', async () => {
   await nav('History').click();
   await expect(page.getByRole('row').filter({ hasText: 'Quit' })).toBeVisible();
 });
+
+test('cards can be added, edited, searched, deleted with undo, and are read-only while a session uses the deck', async () => {
+  await newDeckByPaste('Animals', 'chat,cat\nchien,dog');
+  await page.getByRole('button', { name: 'Cards', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Animals' })).toBeFocused();
+
+  await page.getByLabel('Front', { exact: true }).fill('oiseau');
+  await page.getByLabel('Back', { exact: true }).fill('bird');
+  await page.getByRole('button', { name: 'Add card' }).click();
+  await expect(toast('Added “oiseau”.')).toBeVisible();
+  await expect(page.getByText('3 cards', { exact: true })).toBeVisible();
+
+  await page.getByLabel('Front', { exact: true }).fill(' CHAT ');
+  await page.getByLabel('Back', { exact: true }).fill('cat');
+  await page.getByRole('button', { name: 'Add card' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'already has a card with the same front and back' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Edit chat' }).click();
+  await page.getByLabel('Front', { exact: true }).last().fill('le chat');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(toast('Card saved.')).toBeVisible();
+  await expect(page.getByText('le chat')).toBeVisible();
+
+  await page.getByLabel('Search cards').fill('DOG');
+  await expect(page.getByText('1 card match')).toBeVisible();
+  await expect(page.getByText('le chat')).toBeHidden();
+  await page.getByLabel('Search cards').fill('zebra');
+  await expect(page.getByRole('heading', { name: 'No cards match “zebra”' })).toBeVisible();
+  await page.getByLabel('Search cards').fill('');
+
+  await page.getByRole('button', { name: 'Delete chien' }).click();
+  await expect(toast('Deleted “chien”.')).toBeVisible();
+  await expect(page.getByText('2 cards', { exact: true })).toBeVisible();
+  await toast('Deleted').getByRole('button', { name: 'Undo' }).click();
+  await expect(toast('Restored “chien”.')).toBeVisible();
+  await expect(page.getByText('chien', { exact: true })).toBeVisible();
+
+  await nav('Study').click();
+  await page.getByRole('button', { name: 'Start session' }).click();
+  await expect(page.getByText('Running', { exact: true })).toBeVisible();
+  await nav('Decks').click();
+  await page.getByRole('button', { name: 'Cards', exact: true }).click();
+  await expect(page.getByText('A session is using this deck')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add card' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Edit chien' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Delete chien' })).toBeDisabled();
+});

@@ -124,6 +124,15 @@ input.num { width: 76px; text-align: center; }
 .row { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .row-title { font-weight: 700; overflow-wrap: anywhere; }
 
+/* Cards */
+.card-panel.form.wide { max-width: 760px; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.card-row { align-items: flex-start; }
+.card-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.edit-form { display: grid; gap: 10px; }
+.search { max-width: 360px; }
+@media (max-width: 760px) { .two-col { grid-template-columns: 1fr; } }
+
 /* Session */
 .running-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
 .badge { border: 2px solid var(--line); border-radius: 999px; padding: 4px 14px; white-space: nowrap; background: var(--crumb); }
