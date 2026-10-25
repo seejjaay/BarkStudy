@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "data": {
+    "cap": 3,
+    "preset": "drama-queen",
+    "checkinMinMinutes": 7,
+    "checkinMaxMinutes": 20,
+    "excludedApps": ["zoom.exe", "my-game.exe"],
+    "leaveItHotkey": "Ctrl+Alt+K"
+  }
+}

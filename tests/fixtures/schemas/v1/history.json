@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "data": {
+    "sessions": [
+      { "id": "s-1", "deckId": "deck-1", "topic": "Chapter 3", "startedAt": 1790000000000, "endedAt": 1790003600000, "answered": 12, "treats": 9, "longestWaitMs": 420000, "guiltTrips": 1 }
+    ],
+    "guiltTrips": [{ "at": 1790001000000, "waitedMs": 420000 }],
+    "treats": 9
+  }
+}

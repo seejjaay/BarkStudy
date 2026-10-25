@@ -27,3 +27,30 @@ export interface Deck {
   createdAt: number;
   cards: Card[];
 }
+
+export interface DecksFile {
+  decks: Deck[];
+}
+
+export interface SessionRecord {
+  id: string;
+  deckId: string;
+  topic: string;
+  startedAt: number;
+  endedAt: number;
+  answered: number;
+  treats: number;
+  longestWaitMs: number;
+  guiltTrips: number;
+}
+
+export interface GuiltTripRecord {
+  at: number;
+  waitedMs: number;
+}
+
+export interface HistoryFile {
+  sessions: SessionRecord[];
+  guiltTrips: GuiltTripRecord[];
+  treats: number;
+}

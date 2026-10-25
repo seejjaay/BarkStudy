@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "data": {
+    "decks": [
+      {
+        "id": "deck-1",
+        "name": "French basics",
+        "createdAt": 1790000000000,
+        "cards": [
+          {
+            "id": "card-1",
+            "front": "Bonjour",
+            "back": "Hello",
+            "createdAt": 1790000000000,
+            "fsrs": { "due": 1790000060000, "stability": 0.4, "difficulty": 6.4, "scheduledDays": 0, "learningSteps": 1, "reps": 1, "lapses": 0, "state": 1, "lastReview": 1790000000000 }
+          },
+          {
+            "id": "card-2",
+            "front": "Merci",
+            "back": "Thank you",
+            "createdAt": 1790000000000,
+            "fsrs": { "due": 1790000000000, "stability": 0, "difficulty": 0, "scheduledDays": 0, "learningSteps": 0, "reps": 0, "lapses": 0, "state": 0, "lastReview": null }
+          }
+        ]
+      }
+    ]
+  }
+}
