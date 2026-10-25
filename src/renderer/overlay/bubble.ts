@@ -26,10 +26,16 @@ export interface BubbleView {
   hitRects: () => Rect[];
   /** A click on the dog: reopens a dismissed question. */
   dogClicked: () => void;
+  /** True while the full bubble is showing (not the chip, not hidden). */
+  isOpen: () => boolean;
+  /** Pandesal's words take the eyebrow's place ("Pandesal asks") until called with null. Not announced to screen readers. */
+  setSpeech: (text: string | null) => void;
 }
 
 export function createBubbleView(onLayoutChange: () => void): BubbleView {
   const root = el<HTMLDivElement>('bubble');
+  const eyebrow = el<HTMLParagraphElement>('bubble-eyebrow');
+  const askLabel = eyebrow.textContent ?? '';
   const question = el<HTMLParagraphElement>('bubble-q');
   const form = el<HTMLFormElement>('bubble-form');
   const input = el<HTMLInputElement>('bubble-input');
@@ -50,6 +56,7 @@ export function createBubbleView(onLayoutChange: () => void): BubbleView {
   let feedbackTimer: number | null = null;
   let hasFocus = false;
   let busy = false;
+  let speech: string | null = null;
 
   function takeFocus(): void {
     if (!hasFocus) {
@@ -233,6 +240,18 @@ export function createBubbleView(onLayoutChange: () => void): BubbleView {
     },
     dogClicked() {
       if (state !== null && !state.open) window.barkOverlay.open();
+    },
+    isOpen() {
+      return !root.hidden;
+    },
+    setSpeech(text) {
+      if (text === speech) return;
+      speech = text;
+      eyebrow.textContent = text ?? askLabel;
+      eyebrow.toggleAttribute('data-speech', text !== null);
+      if (text === null) eyebrow.removeAttribute('aria-hidden');
+      else eyebrow.setAttribute('aria-hidden', 'true');
+      render(); // the words may be longer than the label, so the bubble may need to move
     },
   };
 }

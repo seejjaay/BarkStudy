@@ -332,6 +332,51 @@ test('a blank answer is not submitted, and an answer given in the control window
   await expect(bubble).toBeHidden();
 });
 
+/** What main will broadcast: a line key (never text) to every overlay. */
+const saySpeech = (line: { key: string; params?: Record<string, number>; id: number }) =>
+  app!.evaluate(({ BrowserWindow }, l) => {
+    for (const w of BrowserWindow.getAllWindows()) if (w.webContents.getURL().includes('overlay')) w.webContents.send('speech:say', l);
+  }, line);
+
+test('his words go in the eyebrow of an open bubble or in a balloon, last about 4 s, and are hidden from screen readers', async () => {
+  await newDeckByPaste('Capitals', 'France,Paris');
+  await nav('Study').click();
+  await page.getByRole('button', { name: 'Start session' }).click();
+  await debug('checkin');
+  const bubble = overlay().locator('#bubble');
+  const eyebrow = overlay().locator('#bubble-eyebrow');
+  const balloon = overlay().locator('#speech');
+  await expect(bubble).toBeVisible();
+  await expect(eyebrow).toHaveText('Pandesal asks');
+  await expect(balloon).toBeHidden();
+
+  // The bubble is open: the words replace the eyebrow, and there is no balloon.
+  await saySpeech({ key: 'line.guilt.1', params: { minutes: 6 }, id: 1 });
+  await expect(eyebrow).toContainText('6 minutes');
+  await expect(eyebrow).toHaveAttribute('aria-hidden', 'true');
+  await expect(balloon).toBeHidden();
+
+  // The bubble is hidden (a chip is left): a balloon shows, above the chip, and the mouse can go through it.
+  await overlay().keyboard.press('Escape');
+  await expect(bubble).toBeHidden();
+  const chip = overlay().locator('#bubble-chip');
+  await expect(chip).toBeVisible();
+  await saySpeech({ key: 'line.celebrateSmall.1', id: 2 });
+  await expect(balloon).toBeVisible();
+  await expect(balloon).toHaveAttribute('aria-hidden', 'true');
+  await expect(balloon).toHaveCSS('pointer-events', 'none');
+  const [b, c] = [await balloon.boundingBox(), await chip.boundingBox()];
+  expect(b!.y + b!.height).toBeLessThanOrEqual(c!.y);
+
+  // A key with no text says nothing, and the line expires by itself.
+  await saySpeech({ key: 'line.nope.1', id: 3 });
+  await expect(balloon).toBeHidden({ timeout: 8000 });
+  await chip.click();
+  await expect(bubble).toBeVisible();
+  await expect(eyebrow).toHaveText('Pandesal asks');
+  expect(await eyebrow.getAttribute('aria-hidden')).toBeNull();
+});
+
 type Spec = { id?: string; label: string; enabled?: boolean; submenu?: Spec[]; hint?: string };
 const flatSpec = (items: Spec[]): Spec[] => items.flatMap((i) => [i, ...(i.submenu ? flatSpec(i.submenu) : [])]);
 const trayLabels = async () => flatSpec(await debug<Spec[]>('trayMenu')).map((i) => i.label);

@@ -15,6 +15,8 @@ export const IPC = {
   bubbleDismiss: 'bubble:dismiss',
   bubbleOpen: 'bubble:open',
   bubbleFocus: 'bubble:focus',
+  /** main → overlays: something for Pandesal to say. Every overlay gets it; only the one that has him shows it. */
+  speechSay: 'speech:say',
 } as const;
 
 /** How the renderer draws the body. A renderer that does not know a pose draws `walk`. */
@@ -47,6 +49,16 @@ export interface DogFrame {
   reducedMotion: boolean;
 }
 
+/** How long a line stays up, in the balloon or in the bubble's eyebrow. */
+export const SPEECH_SHOW_MS = 4000;
+
+/** One thing Pandesal says. `key` is an i18n line key, never display text; `id` tells one saying from the next. */
+export interface SpeechLine {
+  key: string;
+  params?: Record<string, number>;
+  id: number;
+}
+
 /** The only message the overlay renderer may send: is the cursor over the dog? */
 export function isHitMessage(v: unknown): v is boolean {
   return typeof v === 'boolean';
@@ -68,4 +80,5 @@ export interface BarkOverlayApi {
   open: () => void;
   /** Asks main to give this overlay keyboard focus, or to hand it back. */
   focus: (on: boolean) => void;
+  onSpeech: (cb: (line: SpeechLine) => void) => void;
 }

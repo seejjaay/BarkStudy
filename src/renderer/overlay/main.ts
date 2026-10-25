@@ -4,6 +4,7 @@ import { PRINT_FADE_MS, lapOrigin, needsAnimation } from './effects';
 import { dogHit, inside } from './hit';
 import { proceduralRenderer } from './procedural';
 import type { DogRenderer, EffectsView } from './renderer';
+import { createSpeechView } from './speech';
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement | null;
 const ctx = canvas?.getContext('2d');
@@ -85,14 +86,25 @@ function updateOver(): void {
   window.barkOverlay.hit(over);
 }
 
-const bubble = createBubbleView(updateOver);
+// The bubble tells the speech view when it opens, closes or moves, so the words land in the right place.
+const bubble = createBubbleView(() => {
+  updateOver();
+  speech.refresh();
+});
+const speech = createSpeechView(bubble);
 
 window.barkOverlay.onFrame((f) => {
   frame = f;
   trackTrail(f);
   queueDraw();
   bubble.setFrame(f);
+  speech.setFrame(f);
   updateOver(); // the dog may have walked out from under a still cursor
+});
+// Main tells every overlay what he says and does; only the overlay that has him right now acts on it. Anything else
+// main broadcasts to all overlays gets a listener here with the same check.
+window.barkOverlay.onSpeech((line) => {
+  if (frame !== null) speech.show(line);
 });
 document.addEventListener('mousedown', (e) => {
   if (dogHit(frame, e.clientX, e.clientY)) bubble.dogClicked();
