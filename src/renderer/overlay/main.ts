@@ -4,6 +4,7 @@ import { PRINT_FADE_MS, lapOrigin, needsAnimation } from './effects';
 import { dogHit, inside } from './hit';
 import { proceduralRenderer } from './procedural';
 import type { DogRenderer, EffectsView } from './renderer';
+import { createSynthSoundBank, type SoundBank } from './sound';
 import { createSpeechView } from './speech';
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement | null;
@@ -11,6 +12,7 @@ const ctx = canvas?.getContext('2d');
 if (!canvas || !ctx) throw new Error('overlay: no canvas');
 
 const renderer: DogRenderer = proceduralRenderer;
+const sounds: SoundBank = createSynthSoundBank();
 const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)');
 /** The last frame main sent, and the one place it is kept: null means this overlay does not have the dog right now. */
 let frame: DogFrame | null = null;
@@ -105,6 +107,9 @@ window.barkOverlay.onFrame((f) => {
 // main broadcasts to all overlays gets a listener here with the same check.
 window.barkOverlay.onSpeech((line) => {
   if (frame !== null) speech.show(line);
+});
+window.barkOverlay.onSound((cue) => {
+  if (frame !== null) sounds.play(cue.name, cue.volume);
 });
 document.addEventListener('mousedown', (e) => {
   if (dogHit(frame, e.clientX, e.clientY)) bubble.dogClicked();

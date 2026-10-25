@@ -11,6 +11,10 @@ export interface Settings {
   /** Process names (lower case) that suppress prompts and effects while in front. */
   excludedApps: string[];
   leaveItHotkey: string;
+  /** Pandesal's barks, whines and yips. Off means silent. */
+  soundOn: boolean;
+  /** 0..1. */
+  volume: number;
 }
 
 /** Video calls and recorders: Pandesal stays quiet while these are in front. Games are caught by the fullscreen check. */
@@ -23,4 +27,14 @@ export const DEFAULT_SETTINGS: Settings = {
   checkinMaxMinutes: 15,
   excludedApps: [...DEFAULT_EXCLUDED_APPS],
   leaveItHotkey: 'Ctrl+Alt+L',
+  soundOn: true,
+  volume: 0.4,
 };
+
+/** Settings as they may sit on disk: a file saved before the sound fields existed has neither. */
+export type StoredSettings = Omit<Settings, 'soundOn' | 'volume'> & Partial<Pick<Settings, 'soundOn' | 'volume'>>;
+
+/** Fills whatever an older file lacks with the defaults. Never changes a value that is there. */
+export function fillSettings(s: StoredSettings): Settings {
+  return { ...s, soundOn: s.soundOn ?? DEFAULT_SETTINGS.soundOn, volume: s.volume ?? DEFAULT_SETTINGS.volume };
+}

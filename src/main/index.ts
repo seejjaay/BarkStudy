@@ -93,6 +93,8 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       leaveItLabel: leaveIt.accelerator ?? library.getSettings().leaveItHotkey,
       leaveItConflict: leaveIt.conflict,
       trackerDown,
+      soundOn: library.getSettings().soundOn,
+      volume: library.getSettings().volume,
     }),
     onOpen: () => controlWindow.show(),
     onAction: (action) =>

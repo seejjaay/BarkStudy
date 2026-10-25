@@ -36,6 +36,8 @@ export function isDecksFile(v: unknown): v is DecksFile {
   return isRecord(v) && isArrayOf(v['decks'], isDeck);
 }
 
+// `soundOn` and `volume` came after the first settings files, so they may be missing on disk (the library fills them in);
+// a present one of the wrong type, or a volume outside 0..1, still means the file is not trustworthy.
 export function isSettings(v: unknown): v is Settings {
   return (
     isRecord(v) &&
@@ -44,7 +46,9 @@ export function isSettings(v: unknown): v is Settings {
     isNum(v['checkinMinMinutes']) &&
     isNum(v['checkinMaxMinutes']) &&
     isArrayOf(v['excludedApps'], isStr) &&
-    isStr(v['leaveItHotkey'])
+    isStr(v['leaveItHotkey']) &&
+    (v['soundOn'] === undefined || typeof v['soundOn'] === 'boolean') &&
+    (v['volume'] === undefined || (isNum(v['volume']) && v['volume'] >= 0 && v['volume'] <= 1))
   );
 }
 

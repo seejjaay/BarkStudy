@@ -10,6 +10,13 @@ import type { SessionController } from './session';
 
 export const MAX_TRAY_DECKS = 12;
 
+/** The volumes the tray offers, quietest first. */
+export const TRAY_VOLUMES = [
+  { label: 'Low', level: 0.4 },
+  { label: 'Medium', level: 0.65 },
+  { label: 'High', level: 0.9 },
+] as const;
+
 export interface MenuItemSpec {
   /** Clicking an item with an id runs that action. Items without one are labels, separators or submenus. */
   id?: string;
@@ -18,6 +25,9 @@ export interface MenuItemSpec {
   separator?: boolean;
   /** The shortcut shown beside the label (display only; the hotkey itself is registered elsewhere). */
   hint?: string;
+  /** A checkbox or a radio item shows `checked`; without a kind the item is a plain entry. */
+  kind?: 'checkbox' | 'radio';
+  checked?: boolean;
   submenu?: MenuItemSpec[];
 }
 
@@ -28,6 +38,9 @@ export interface TrayInputs {
   leaveItLabel: string;
   leaveItConflict: boolean;
   trackerDown: boolean;
+  soundOn: boolean;
+  /** 0..1. */
+  volume: number;
 }
 
 export type TrayAction =
@@ -38,7 +51,9 @@ export type TrayAction =
   | { kind: 'resume' }
   | { kind: 'stay-on'; minutes: 15 | 25 | 50 }
   | { kind: 'stay-off' }
-  | { kind: 'start'; deckId: string };
+  | { kind: 'start'; deckId: string }
+  | { kind: 'sound'; on: boolean }
+  | { kind: 'volume'; level: (typeof TRAY_VOLUMES)[number]['level'] };
 
 const sep: MenuItemSpec = { label: '', separator: true };
 const minutesLeft = (ms: number) => Math.max(1, Math.ceil(ms / 60_000));
@@ -98,6 +113,13 @@ export function buildTrayMenu(inputs: TrayInputs): MenuItemSpec[] {
     );
   }
 
+  // The Sounds item's id says what a click does: it turns sound off while it is on, and on while it is off.
+  items.push(
+    sep,
+    { id: inputs.soundOn ? 'sound:off' : 'sound:on', label: 'Sounds', kind: 'checkbox', checked: inputs.soundOn },
+    { label: 'Volume', submenu: TRAY_VOLUMES.map((v) => ({ id: `volume:${v.level}`, label: v.label, kind: 'radio', checked: inputs.volume === v.level })) },
+  );
+
   items.push(sep, { id: 'open', label: 'Open BarkStudy' }, { id: 'quit', label: 'Quit BarkStudy' });
   return items;
 }
@@ -118,12 +140,15 @@ export function parseTrayAction(id: string): TrayAction | null {
   if (stay) return { kind: 'stay-on', minutes: Number(stay[1]) as 15 | 25 | 50 };
   const start = /^start:(.{1,200})$/.exec(id);
   if (start?.[1]) return { kind: 'start', deckId: start[1] };
+  if (id === 'sound:on' || id === 'sound:off') return { kind: 'sound', on: id === 'sound:on' };
+  const volume = TRAY_VOLUMES.find((v) => id === `volume:${v.level}`);
+  if (volume) return { kind: 'volume', level: volume.level };
   return null;
 }
 
 export interface TrayActionDeps {
   session: Pick<SessionController, 'start' | 'end' | 'control'>;
-  library: Pick<Library, 'getSettings'>;
+  library: Pick<Library, 'getSettings' | 'updateSettings'>;
   openControl: () => void;
   quit: () => void;
   /** A quiet message the user can read, such as a notification. Used when an action cannot be carried out. */
@@ -157,6 +182,12 @@ export async function runTrayAction(action: TrayAction, deps: TrayActionDeps): P
       report(deps.session.start(req));
       return;
     }
+    case 'sound':
+      report(await deps.library.updateSettings({ soundOn: action.on }));
+      return;
+    case 'volume':
+      report(await deps.library.updateSettings({ volume: action.level }));
+      return;
     case 'pause':
     case 'resume':
     case 'stay-off':

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createLibrary, type Library } from '../../src/main/library';
 import { createStorage, nodeFs } from '../../src/main/storage/io';
 import { parseDeck } from '../../src/shared/deckParse';
+import type { Settings } from '../../src/shared/settings';
 import { newCard, review } from '../../src/shared/srs';
 
 let dir: string;
@@ -64,6 +65,81 @@ describe('opening', () => {
     expect(code(await lib.createDeck('Nope'))).toBe('store-unavailable');
     ok(await lib.recordSession({ deckId: 'x', topic: '', summary: summary() }));
     expect(fs.readFileSync(join(dir, 'decks.json'), 'utf8')).toBe(text);
+  });
+});
+
+describe('settings', () => {
+  // The settings file as the app wrote it before the sound fields existed.
+  const preM4Data = { cap: 3, preset: 'drama-queen', checkinMinMinutes: 7, checkinMaxMinutes: 20, excludedApps: ['zoom.exe'], leaveItHotkey: 'Ctrl+Alt+K' };
+  const preM4 = JSON.stringify({ schemaVersion: 1, data: preM4Data });
+
+  it('a settings.json from before M4 loads with soundOn true and volume 0.4 and is not set aside', async () => {
+    fs.writeFileSync(join(dir, 'settings.json'), preM4);
+    const lib = await open();
+    expect(lib.notices()).toEqual([]);
+    expect(lib.getSettings()).toEqual({
+      cap: 3,
+      preset: 'drama-queen',
+      checkinMinMinutes: 7,
+      checkinMaxMinutes: 20,
+      excludedApps: ['zoom.exe'],
+      leaveItHotkey: 'Ctrl+Alt+K',
+      soundOn: true,
+      volume: 0.4,
+    });
+    expect(fs.readFileSync(join(dir, 'settings.json'), 'utf8')).toBe(preM4);
+    const backups = join(dir, 'backups');
+    expect(fs.existsSync(backups) ? fs.readdirSync(backups).filter((f) => f.startsWith('settings')) : []).toEqual([]);
+  });
+
+  it('a fresh folder has the sound defaults', async () => {
+    expect(await open().then((l) => l.getSettings())).toMatchObject({ soundOn: true, volume: 0.4 });
+  });
+
+  it('updateSettings saves and survives reopening', async () => {
+    fs.writeFileSync(join(dir, 'settings.json'), preM4);
+    const a = await open();
+    const saved = ok(await a.updateSettings({ soundOn: false, volume: 0.9 }));
+    expect(saved).toMatchObject({ soundOn: false, volume: 0.9, cap: 3, leaveItHotkey: 'Ctrl+Alt+K' });
+    expect(a.getSettings()).toEqual(saved);
+    const b = await open();
+    expect(b.notices()).toEqual([]);
+    expect(b.getSettings()).toMatchObject({ soundOn: false, volume: 0.9, cap: 3, excludedApps: ['zoom.exe'] });
+  });
+
+  it('updateSettings changes only what the patch names', async () => {
+    const lib = await open();
+    ok(await lib.updateSettings({ volume: 0.65 }));
+    expect(lib.getSettings()).toMatchObject({ soundOn: true, volume: 0.65, cap: 4 });
+    ok(await lib.updateSettings({ soundOn: false }));
+    expect(lib.getSettings()).toMatchObject({ soundOn: false, volume: 0.65 });
+  });
+
+  it('updateSettings refuses volume 1.5, -0.1 and a non-boolean soundOn, and keeps what was saved', async () => {
+    const lib = await open();
+    ok(await lib.updateSettings({ volume: 0.65 }));
+    expect(code(await lib.updateSettings({ volume: 1.5 }))).toBe('invalid-request');
+    expect(code(await lib.updateSettings({ volume: -0.1 }))).toBe('invalid-request');
+    expect(code(await lib.updateSettings({ volume: Number.NaN }))).toBe('invalid-request');
+    expect(code(await lib.updateSettings({ soundOn: 'yes' as unknown as boolean }))).toBe('invalid-request');
+    expect(code(await lib.updateSettings({ cap: 9 as unknown as 2 }))).toBe('invalid-request');
+    expect(lib.getSettings()).toMatchObject({ soundOn: true, volume: 0.65 });
+    expect((await open()).getSettings()).toMatchObject({ soundOn: true, volume: 0.65 });
+  });
+
+  it('updateSettings ignores a field that is not a setting', async () => {
+    const lib = await open();
+    ok(await lib.updateSettings({ volume: 0.9, extra: 1 } as Partial<Settings>));
+    expect(Object.keys(lib.getSettings())).not.toContain('extra');
+    const onDisk = JSON.parse(fs.readFileSync(join(dir, 'settings.json'), 'utf8')) as { data: Record<string, unknown> };
+    expect(Object.keys(onDisk.data)).not.toContain('extra');
+  });
+
+  it('a settings file with a sound field of the wrong type is set aside like any other bad file', async () => {
+    fs.writeFileSync(join(dir, 'settings.json'), JSON.stringify({ schemaVersion: 1, data: { ...preM4Data, volume: 7 } }));
+    const lib = await open();
+    expect(lib.notices()).toEqual([expect.objectContaining({ store: 'settings', kind: 'recovered' })]);
+    expect(lib.getSettings()).toMatchObject({ soundOn: true, volume: 0.4 });
   });
 });
 

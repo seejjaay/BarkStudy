@@ -1,6 +1,7 @@
 import type { BubbleState, RevealResult, SelfGrade, SubmitResult } from './bubble';
 import type { Rect } from './geometry';
 import type { Mood } from './mood';
+import type { SoundName } from './sounds';
 
 export const IPC = {
   overlayFrame: 'overlay:frame',
@@ -17,6 +18,8 @@ export const IPC = {
   bubbleFocus: 'bubble:focus',
   /** main → overlays: something for Pandesal to say. Every overlay gets it; only the one that has him shows it. */
   speechSay: 'speech:say',
+  /** main → overlays: a sound for Pandesal to make. Every overlay gets it; only the one that has him plays it. */
+  soundPlay: 'sound:play',
 } as const;
 
 /** How the renderer draws the body. A renderer that does not know a pose draws `walk`. */
@@ -59,6 +62,12 @@ export interface SpeechLine {
   id: number;
 }
 
+/** One sound for the overlay to play, already past main's sound gate. `volume` is 0..1. */
+export interface SoundCue {
+  name: SoundName;
+  volume: number;
+}
+
 /** The only message the overlay renderer may send: is the cursor over the dog? */
 export function isHitMessage(v: unknown): v is boolean {
   return typeof v === 'boolean';
@@ -81,4 +90,5 @@ export interface BarkOverlayApi {
   /** Asks main to give this overlay keyboard focus, or to hand it back. */
   focus: (on: boolean) => void;
   onSpeech: (cb: (line: SpeechLine) => void) => void;
+  onSound: (cb: (cue: SoundCue) => void) => void;
 }

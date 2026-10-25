@@ -44,6 +44,7 @@ export function createOverlayManager(opts: { preload: string; load: (w: BrowserW
         contextIsolation: true,
         sandbox: true,
         nodeIntegration: false,
+        autoplayPolicy: 'no-user-gesture-required', // his sounds start without a click
       },
     });
     win.setAlwaysOnTop(true, 'screen-saver');
