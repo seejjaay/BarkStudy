@@ -1,6 +1,7 @@
 import {
   OP_NAMES,
   type AppError,
+  type AppStatus,
   type CardUndo,
   type LibrarySnapshot,
   type OpName,
@@ -42,7 +43,7 @@ export interface ControlHandlerOptions {
   library: Library;
   session: SessionController;
   files: FileAccess;
-  trackerDown: () => boolean;
+  status: () => AppStatus;
 }
 
 export interface ControlHandlers {
@@ -112,7 +113,7 @@ export function createControlHandlers(opts: ControlHandlerOptions): ControlHandl
       .slice(0, SNAPSHOT_SESSIONS)
       .map((s) => ({ ...s, deckName: names.get(s.deckId) ?? null }));
     const { cap, checkinMinMinutes, checkinMaxMinutes } = library.getSettings();
-    return { decks, sessions, notices: library.notices(), defaults: { cap, checkinMinMinutes, checkinMaxMinutes }, trackerDown: opts.trackerDown() };
+    return { decks, sessions, notices: library.notices(), defaults: { cap, checkinMinMinutes, checkinMaxMinutes }, ...opts.status() };
   }
 
   async function importFile(deckId: string | null): Promise<unknown> {

@@ -37,6 +37,7 @@ function Shell() {
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [session, setSession] = useState<SessionView>({ phase: 'idle' });
   const [trackerDown, setTrackerDown] = useState(false);
+  const [leaveIt, setLeaveIt] = useState({ conflict: false, label: 'Ctrl+Alt+L' });
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [studyDeckId, setStudyDeckId] = useState<string | null>(null);
   const sawEvent = useRef(false);
@@ -46,6 +47,7 @@ function Shell() {
       const snapshot = await api.call('app:snapshot', undefined);
       setLoad({ status: 'ready', snapshot });
       setTrackerDown(snapshot.trackerDown);
+      setLeaveIt({ conflict: snapshot.leaveItConflict, label: snapshot.leaveItLabel });
     } catch (e) {
       setLoad({ status: 'error', message: e instanceof Error ? e.message : String(e) });
     }
@@ -55,7 +57,10 @@ function Shell() {
     api.onEvent((e) => {
       sawEvent.current = true;
       if (e.type === 'session') setSession(e.view);
-      else setTrackerDown(e.trackerDown);
+      else {
+        setTrackerDown(e.trackerDown);
+        setLeaveIt({ conflict: e.leaveItConflict, label: e.leaveItLabel });
+      }
     });
     void api.call('session:view', undefined).then((v) => {
       if (!sawEvent.current) setSession(v);
@@ -103,6 +108,14 @@ function Shell() {
         {trackerDown && (
           <div className="banner banner-warn" role="status">
             <strong>Window tracking is off.</strong> Pandesal can&apos;t see your other windows, so she roams the edges of your screen instead. Restart BarkStudy to try again.
+          </div>
+        )}
+        {leaveIt.conflict && (
+          <div className="banner banner-warn" role="status">
+            <span>
+              <strong>{leaveIt.label} is used by another app,</strong> so Leave it won&apos;t work from the keyboard. You can still pause from the tray icon or the Study page.
+              Choosing a different shortcut arrives with Settings.
+            </span>
           </div>
         )}
         {notices.map((n) => (

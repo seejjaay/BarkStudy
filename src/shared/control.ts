@@ -129,6 +129,10 @@ export interface LibrarySnapshot {
   notices: Notice[];
   defaults: SessionDefaults;
   trackerDown: boolean;
+  /** The Leave it shortcut could not be registered because another app owns it. */
+  leaveItConflict: boolean;
+  /** How the Leave it shortcut is written, such as "Ctrl+Alt+L". */
+  leaveItLabel: string;
 }
 
 export interface StartRequest {
@@ -193,7 +197,13 @@ export const OP_NAMES: readonly OpName[] = [
   'session:dismiss-summary',
 ];
 
-export type ControlEvent = { type: 'session'; view: SessionView } | { type: 'status'; trackerDown: boolean };
+export interface AppStatus {
+  trackerDown: boolean;
+  leaveItConflict: boolean;
+  leaveItLabel: string;
+}
+
+export type ControlEvent = { type: 'session'; view: SessionView } | ({ type: 'status' } & AppStatus);
 
 /** `window.barkControl`, exposed by the control window's preload. */
 export interface BarkControlApi {

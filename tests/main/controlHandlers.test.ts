@@ -16,6 +16,7 @@ let picked: Result<{ name: string; text: string } | null>;
 let saved: { name: string; csv: string }[];
 let saveFails = false;
 let trackerDown = false;
+let leaveItConflict = false;
 let ids = 0;
 
 const files: FileAccess = {
@@ -38,10 +39,11 @@ beforeEach(async () => {
   saved = [];
   saveFails = false;
   trackerDown = false;
+  leaveItConflict = false;
   picked = { ok: true, value: null };
   lib = await createLibrary({ storage: createStorage(dir), newId: () => `id${++ids}` });
   session = createSessionController({ library: lib, seed: 1, publish: () => undefined });
-  h = createControlHandlers({ library: lib, session, files, trackerDown: () => trackerDown });
+  h = createControlHandlers({ library: lib, session, files, status: () => ({ trackerDown, leaveItConflict: leaveItConflict, leaveItLabel: 'Ctrl+Alt+L' }) });
 });
 afterEach(() => {
   session.dispose();
@@ -199,7 +201,7 @@ describe('export', () => {
   it('cancelling the save dialog is a quiet success', async () => {
     const d = ok(await lib.importAsNewDeck('X', 'a,b'));
     const files2: FileAccess = { ...files, saveExport: () => Promise.resolve(null) };
-    const h2 = createControlHandlers({ library: lib, session, files: files2, trackerDown: () => false });
+    const h2 = createControlHandlers({ library: lib, session, files: files2, status: () => ({ trackerDown: false, leaveItConflict: false, leaveItLabel: 'Ctrl+Alt+L' }) });
     expect(await h2.handle('deck:export', { id: d.deckId })).toEqual({ ok: true, value: null });
   });
 
@@ -227,11 +229,14 @@ describe('snapshot', () => {
     ok(await lib.recordSession({ deckId: gone.deckId, topic: '', summary }));
     ok(await lib.deleteDeck(gone.deckId));
     trackerDown = true;
+    leaveItConflict = true;
     const s = await call<LibrarySnapshot>('app:snapshot');
     expect(s.decks.map((x) => x.name)).toEqual(['Capitals']);
     expect(s.sessions.map((x) => x.deckName)).toEqual([null, 'Capitals']);
     expect(s.defaults).toEqual({ cap: 4, checkinMinMinutes: 5, checkinMaxMinutes: 15 });
     expect(s.trackerDown).toBe(true);
+    expect(s.leaveItConflict).toBe(true);
+    expect(s.leaveItLabel).toBe('Ctrl+Alt+L');
     expect(s.notices).toEqual([]);
   });
 });
