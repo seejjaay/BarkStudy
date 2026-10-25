@@ -209,6 +209,87 @@ describe('reviews', () => {
   });
 });
 
+describe('cards', () => {
+  async function deckWithCards() {
+    const lib = await open();
+    const d = ok(await lib.importAsNewDeck('French', 'chat,cat\nchien,dog\noiseau,bird'));
+    return { lib, deckId: d.deckId };
+  }
+
+  it('lists a deck’s cards in order, as plain front and back', async () => {
+    const { lib, deckId } = await deckWithCards();
+    expect(ok(lib.listCards(deckId)).map((c) => [c.front, c.back])).toEqual([['chat', 'cat'], ['chien', 'dog'], ['oiseau', 'bird']]);
+    expect(code(lib.listCards('nope'))).toBe('not-found');
+  });
+
+  it('adds a trimmed card as a new card at the end, and it survives reopening', async () => {
+    const { lib, deckId } = await deckWithCards();
+    const c = ok(await lib.addCard(deckId, '  cheval ', ' horse  '));
+    expect(c).toMatchObject({ front: 'cheval', back: 'horse' });
+    expect(lib.getDeck(deckId)?.cards.at(-1)).toMatchObject({ id: c.id, fsrs: { state: 0, reps: 0 } });
+    expect(ok((await open()).listCards(deckId))).toHaveLength(4);
+  });
+
+  it('refuses empty, overlong and duplicate cards, and an unknown deck', async () => {
+    const { lib, deckId } = await deckWithCards();
+    expect(code(await lib.addCard(deckId, '  ', 'x'))).toBe('invalid-card');
+    expect(code(await lib.addCard(deckId, 'x', ''))).toBe('invalid-card');
+    expect(code(await lib.addCard(deckId, 'x'.repeat(2001), 'y'))).toBe('invalid-card');
+    expect(code(await lib.addCard(deckId, ' CHAT ', 'Cat'))).toBe('duplicate-card');
+    expect(code(await lib.addCard('nope', 'a', 'b'))).toBe('not-found');
+    expect(ok(lib.listCards(deckId))).toHaveLength(3);
+  });
+
+  it('editing changes the words and keeps the review history and place', async () => {
+    const { lib, deckId } = await deckWithCards();
+    const target = lib.getDeck(deckId)!.cards[1]!;
+    ok(await lib.updateCard(deckId, review(target, 'good', tick + 1)));
+    const edited = ok(await lib.editCard(deckId, target.id, 'le chien', 'the dog'));
+    expect(edited).toMatchObject({ id: target.id, front: 'le chien', back: 'the dog' });
+    const after = lib.getDeck(deckId)!.cards;
+    expect(after[1]).toMatchObject({ id: target.id, front: 'le chien' });
+    expect(after[1]?.fsrs.reps).toBe(1);
+    expect(after).toHaveLength(3);
+  });
+
+  it('editing refuses empty text, a duplicate of another card, and a missing card or deck; saving unchanged text is fine', async () => {
+    const { lib, deckId } = await deckWithCards();
+    const [a, b] = lib.getDeck(deckId)!.cards;
+    expect(code(await lib.editCard(deckId, a!.id, '', 'x'))).toBe('invalid-card');
+    expect(code(await lib.editCard(deckId, a!.id, b!.front, b!.back))).toBe('duplicate-card');
+    ok(await lib.editCard(deckId, a!.id, a!.front, a!.back));
+    expect(code(await lib.editCard(deckId, 'ghost', 'a', 'b'))).toBe('not-found');
+    expect(code(await lib.editCard('nope', a!.id, 'a', 'b'))).toBe('not-found');
+  });
+
+  it('delete returns an undo token that restores the card, its history and its place', async () => {
+    const { lib, deckId } = await deckWithCards();
+    const middle = lib.getDeck(deckId)!.cards[1]!;
+    ok(await lib.updateCard(deckId, review(middle, 'good', tick + 1)));
+    const undo = ok(await lib.deleteCard(deckId, middle.id));
+    expect(undo).toMatchObject({ deckId, index: 1 });
+    expect(ok(lib.listCards(deckId)).map((c) => c.front)).toEqual(['chat', 'oiseau']);
+    ok(await lib.restoreCard(undo));
+    expect(ok(lib.listCards(deckId)).map((c) => c.front)).toEqual(['chat', 'chien', 'oiseau']);
+    expect(lib.getDeck(deckId)!.cards[1]?.fsrs.reps).toBe(1);
+  });
+
+  it('restoring twice, into a deck that is gone, or over a duplicate that was added meanwhile is refused', async () => {
+    const { lib, deckId } = await deckWithCards();
+    const card = lib.getDeck(deckId)!.cards[0]!;
+    const undo = ok(await lib.deleteCard(deckId, card.id));
+    ok(await lib.addCard(deckId, card.front, card.back));
+    expect(code(await lib.restoreCard(undo))).toBe('duplicate-card');
+    const undo2 = ok(await lib.deleteCard(deckId, lib.getDeck(deckId)!.cards.at(-1)!.id));
+    ok(await lib.restoreCard(undo2));
+    expect(code(await lib.restoreCard(undo2))).toBe('already-exists');
+    ok(await lib.deleteDeck(deckId));
+    expect(code(await lib.restoreCard(undo))).toBe('not-found');
+    expect(code(await lib.deleteCard('nope', 'x'))).toBe('not-found');
+    expect(code(await lib.deleteCard(deckId, 'x'))).toBe('not-found');
+  });
+});
+
 function summary(over: Partial<{ answered: number; treats: number; longestWaitMs: number; guilt: number[] }> = {}) {
   return {
     startedAt: 1_000,

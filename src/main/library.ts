@@ -1,4 +1,15 @@
-import type { AppError, DeckSummary, ErrorCode, ImportReport, Notice, Result, UndoToken } from '../shared/control';
+import {
+  MAX_CARD_TEXT,
+  type AppError,
+  type CardUndo,
+  type DeckSummary,
+  type ErrorCode,
+  type ImportReport,
+  type Notice,
+  type Result,
+  type UndoToken,
+  type ViewCard,
+} from '../shared/control';
 import { exportDeck as exportCsv, parseDeck } from '../shared/deckParse';
 import type { Card, Deck, DecksFile, GuiltTripRecord, HistoryFile, SessionRecord } from '../shared/model';
 import type { Settings } from '../shared/settings';
@@ -32,6 +43,12 @@ export interface Library {
   importAsNewDeck: (name: string, text: string) => Promise<Result<ImportReport>>;
   importInto: (deckId: string, text: string) => Promise<Result<ImportReport>>;
   exportDeck: (id: string) => Result<{ name: string; csv: string }>;
+  listCards: (deckId: string) => Result<ViewCard[]>;
+  addCard: (deckId: string, front: string, back: string) => Promise<Result<ViewCard>>;
+  /** Changes the words only; the card keeps its review history and its place. */
+  editCard: (deckId: string, cardId: string, front: string, back: string) => Promise<Result<ViewCard>>;
+  deleteCard: (deckId: string, cardId: string) => Promise<Result<CardUndo>>;
+  restoreCard: (undo: CardUndo) => Promise<Result<ViewCard>>;
   /** Replaces the stored card with the same id. */
   updateCard: (deckId: string, card: Card) => Promise<Result<void>>;
   recordSession: (input: SessionInput) => Promise<Result<SessionRecord>>;
@@ -123,6 +140,19 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
     if (file.decks.some((d) => d.id !== selfId && nameKey(d.name) === nameKey(trimmed))) return fail('duplicate-name', 'a deck with that name already exists');
     return { ok: true, name: trimmed };
   }
+
+  function checkCardText(front: string, back: string): { ok: true; front: string; back: string } | { ok: false; error: AppError } {
+    const f = front.trim();
+    const b = back.trim();
+    if (f.length === 0 || b.length === 0 || f.length > MAX_CARD_TEXT || b.length > MAX_CARD_TEXT) {
+      return fail('invalid-card', `each side of a card is 1 to ${MAX_CARD_TEXT} characters`);
+    }
+    return { ok: true, front: f, back: b };
+  }
+  const hasCard = (deck: Deck, front: string, back: string, exceptId?: string) =>
+    deck.cards.some((c) => c.id !== exceptId && cardKey(c.front, c.back) === cardKey(front, back));
+  const viewOf = (c: Card): ViewCard => ({ id: c.id, front: c.front, back: c.back });
+  const dupCard = () => fail('duplicate-card', 'that deck already has a card with the same front and back');
 
   const findDeck = (file: DecksFile, id: string) => file.decks.find((d) => d.id === id);
   const deckNotFound = () => fail('not-found', 'that deck no longer exists');
@@ -219,6 +249,55 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
       const deck = findDeck(decks.value, id);
       return deck ? good({ name: deck.name, csv: exportCsv(deck.cards) }) : deckNotFound();
     },
+
+    listCards: (deckId) => {
+      const deck = findDeck(decks.value, deckId);
+      return deck ? good(deck.cards.map(viewOf)) : deckNotFound();
+    },
+
+    addCard: (deckId, front, back) =>
+      mutate(decks, (file) => {
+        const deck = findDeck(file, deckId);
+        if (!deck) return deckNotFound();
+        const text = checkCardText(front, back);
+        if (!text.ok) return text;
+        if (hasCard(deck, text.front, text.back)) return dupCard();
+        const card = newCard(newId(), text.front, text.back, now());
+        deck.cards.push(card);
+        return good(viewOf(card));
+      }),
+
+    editCard: (deckId, cardId, front, back) =>
+      mutate(decks, (file) => {
+        const deck = findDeck(file, deckId);
+        const card = deck?.cards.find((c) => c.id === cardId);
+        if (!deck || !card) return fail('not-found', 'that card no longer exists');
+        const text = checkCardText(front, back);
+        if (!text.ok) return text;
+        if (hasCard(deck, text.front, text.back, cardId)) return dupCard();
+        card.front = text.front;
+        card.back = text.back;
+        return good(viewOf(card));
+      }),
+
+    deleteCard: (deckId, cardId) =>
+      mutate(decks, (file) => {
+        const deck = findDeck(file, deckId);
+        const index = deck ? deck.cards.findIndex((c) => c.id === cardId) : -1;
+        if (!deck || index < 0) return fail('not-found', 'that card no longer exists');
+        const [card] = deck.cards.splice(index, 1);
+        return good({ deckId, card: card!, index });
+      }),
+
+    restoreCard: ({ deckId, card, index }) =>
+      mutate(decks, (file) => {
+        const deck = findDeck(file, deckId);
+        if (!deck) return deckNotFound();
+        if (deck.cards.some((c) => c.id === card.id)) return fail('already-exists', 'that card is already back');
+        if (hasCard(deck, card.front, card.back)) return dupCard();
+        deck.cards.splice(Math.min(index, deck.cards.length), 0, structuredClone(card));
+        return good(viewOf(card));
+      }),
 
     updateCard: (deckId, card) =>
       mutate(decks, (file) => {

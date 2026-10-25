@@ -15,6 +15,9 @@ export const ERROR_TEXT: Record<ErrorCode, string> = {
   'already-running': 'A session is already running.',
   'not-running': 'No session is running.',
   'invalid-request': 'That did not look right. Check the fields and try again.',
+  'duplicate-card': 'This deck already has a card with the same front and back.',
+  'invalid-card': 'Both sides of a card need some text, up to 2000 characters each.',
+  'deck-in-use': 'A session is using this deck right now. End the session first.',
   'file-unreadable': 'That file could not be read.',
   'file-too-large': 'That is too large to import.',
 };

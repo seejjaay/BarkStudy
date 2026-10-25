@@ -28,7 +28,8 @@ describe('words', () => {
   it('every error code and every skip reason has text, and none is empty', () => {
     const codes: ErrorCode[] = [
       'invalid-name', 'duplicate-name', 'not-found', 'already-exists', 'no-valid-rows', 'store-unavailable', 'write-failed',
-      'empty-deck', 'already-running', 'not-running', 'invalid-request', 'file-unreadable', 'file-too-large',
+      'empty-deck', 'already-running', 'not-running', 'invalid-request', 'duplicate-card', 'invalid-card', 'deck-in-use',
+      'file-unreadable', 'file-too-large',
     ];
     expect(Object.keys(ERROR_TEXT).sort()).toEqual([...codes].sort());
     const reasons: SkipReason[] = ['no-separator', 'empty-front', 'empty-back', 'header-row'];

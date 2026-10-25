@@ -1,5 +1,5 @@
 import type { SkippedRow } from './deckParse';
-import type { Deck, SessionRecord } from './model';
+import type { Card, Deck, SessionRecord } from './model';
 import type { Grade } from './srs';
 
 /**
@@ -19,6 +19,9 @@ export type ErrorCode =
   | 'already-running'
   | 'not-running'
   | 'invalid-request'
+  | 'duplicate-card'
+  | 'invalid-card'
+  | 'deck-in-use'
   | 'file-unreadable'
   | 'file-too-large';
 
@@ -43,6 +46,15 @@ export interface UndoToken {
   deck: Deck;
   index: number;
 }
+
+/** What deleting a card hands back so it can be put back in the same place with its review history. */
+export interface CardUndo {
+  deckId: string;
+  card: Card;
+  index: number;
+}
+
+export const MAX_CARD_TEXT = 2000;
 
 export interface ImportReport {
   deckId: string;
@@ -142,6 +154,12 @@ export interface ControlOps {
   'deck:import-file': [{ deckId: string | null }, Result<ImportReport | null>];
   /** Main opens the save dialog. `null` inside `ok` means the user cancelled. */
   'deck:export': [{ id: string }, Result<{ path: string } | null>];
+  'card:list': [{ deckId: string }, Result<ViewCard[]>];
+  'card:add': [{ deckId: string; front: string; back: string }, Result<ViewCard>];
+  /** Changes the words only; the card keeps its review history. */
+  'card:edit': [{ deckId: string; cardId: string; front: string; back: string }, Result<ViewCard>];
+  'card:delete': [{ deckId: string; cardId: string }, Result<CardUndo>];
+  'card:restore': [CardUndo, Result<ViewCard>];
   'session:start': [StartRequest, Result<SessionView>];
   'session:end': [void, Result<SessionView>];
   'session:answer': [{ grade: Grade }, Result<void>];
@@ -163,6 +181,11 @@ export const OP_NAMES: readonly OpName[] = [
   'deck:import-text',
   'deck:import-file',
   'deck:export',
+  'card:list',
+  'card:add',
+  'card:edit',
+  'card:delete',
+  'card:restore',
   'session:start',
   'session:end',
   'session:answer',
