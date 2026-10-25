@@ -16,6 +16,14 @@ export default tseslint.config(
     extends: [tseslint.configs.disableTypeChecked],
   },
   {
+    // Plain CommonJS helper scripts run by hand under Node. `window` and `document` appear only inside Playwright page callbacks.
+    files: ['scripts/**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: { __dirname: 'readonly', require: 'readonly', process: 'readonly', console: 'readonly', setTimeout: 'readonly', window: 'readonly', document: 'readonly' },
+    },
+  },
+  {
     // No Math.random anywhere in src/: randomness goes through src/engine/rng.ts.
     files: ['src/**/*.{ts,tsx}'],
     rules: {
