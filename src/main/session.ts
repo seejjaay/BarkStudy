@@ -1,4 +1,6 @@
+import type { BubbleState, RevealResult, SelfGrade, SubmitResult } from '../shared/bubble';
 import type { AppError, Result, SessionAction, SessionView, StartRequest, ViewCard } from '../shared/control';
+import { matchAnswer, type Match } from '../shared/matching';
 import type { Card } from '../shared/model';
 import type { Grade } from '../shared/srs';
 import { createEngineHost, type CardPrompt, type EngineHost, type ExternalEvent, type HostSink } from './engineHost';
@@ -12,6 +14,8 @@ import type { Library } from './library';
  */
 
 export const VIEW_REFRESH_MS = 1000;
+/** What the engine's personality layer sets for its "re-ask" intent (see EXPRESSION in engine/personality.ts). */
+export const RE_ASK_EXPRESSION = 'pleading';
 export const MAX_TOPIC = 80;
 export const MAX_INTERVAL_MINUTES = 240;
 const STAY_MINUTES: readonly number[] = [15, 25, 50];
@@ -25,6 +29,8 @@ export interface SessionControllerOptions {
   library: Library;
   seed: number;
   publish: (view: SessionView) => void;
+  /** The bubble beside Pandesal: the question while one is pending, null otherwise. Sent only when it changes. */
+  publishBubble?: (state: BubbleState | null) => void;
   dog?: DogHooks;
   clock?: Clock;
 }
@@ -37,6 +43,16 @@ export interface SessionController {
   /** Leaves the end-of-session summary and returns to idle. */
   dismissSummary: () => void;
   view: () => SessionView;
+  bubbleState: () => BubbleState | null;
+  /** Esc: hides the bubble. The card stays pending and unanswered. */
+  dismissBubble: () => void;
+  /** A click on Pandesal or the hotkey. Does nothing if no card is up. */
+  openBubble: () => void;
+  /** A typed answer, matched here so the expected answer never leaves main until it is shown. Blank text is not an answer. */
+  submitText: (text: string) => SubmitResult;
+  revealAnswer: () => RevealResult;
+  /** After "Show answer": Got it or Missed it. False if there is no card. */
+  selfGrade: (grade: SelfGrade) => boolean;
   /** The deck a running session is drawing from, or null. */
   activeDeckId: () => string | null;
   /** Idle, away and suppression changes, and anything else the engine takes from outside. */
@@ -71,14 +87,17 @@ export function createSessionController(opts: SessionControllerOptions): Session
   let active: Active | null = null;
   let ended: Extract<SessionView, { phase: 'ended' }> | null = null;
   let card: ViewCard | null = null;
+  let bubbleOpen = true;
   let saveProblem = false;
   let lastPublished = '';
+  let lastBubble = '';
   let refreshHandle: unknown = null;
   const pending = new Set<Promise<unknown>>();
 
   const sink: HostSink = {
     showCard: (c: CardPrompt) => {
       card = { id: c.id, front: c.front, back: c.back };
+      bubbleOpen = true; // asking again (or the first time) always brings the bubble back
       publish();
     },
     hideCard: () => {
@@ -86,7 +105,13 @@ export function createSessionController(opts: SessionControllerOptions): Session
       publish();
     },
     say: () => undefined,
-    expression: () => undefined,
+    expression: (name) => {
+      // The engine's "re-ask" intent asks again by pleading; it is the only intent that does. A dismissed bubble comes back.
+      if (name === RE_ASK_EXPRESSION && card && !bubbleOpen) {
+        bubbleOpen = true;
+        publish();
+      }
+    },
     walkTo: (id) => opts.dog?.walkTo?.(id),
     effect: (a) => opts.dog?.effect?.(a),
     treat: () => undefined,
@@ -135,12 +160,25 @@ export function createSessionController(opts: SessionControllerOptions): Session
     return ended ?? { phase: 'idle' };
   }
 
+  function buildBubble(): BubbleState | null {
+    return host.running && card ? { cardId: card.id, front: card.front, open: bubbleOpen } : null;
+  }
+
   function publish(): void {
+    const bubble = JSON.stringify(buildBubble());
+    if (bubble !== lastBubble) {
+      lastBubble = bubble;
+      opts.publishBubble?.(buildBubble());
+    }
     const view = buildView();
     const key = JSON.stringify(view);
     if (key === lastPublished) return;
     lastPublished = key;
     opts.publish(view);
+  }
+
+  function gradeFor(m: Match): Grade {
+    return m === 'exact' ? 'good' : m === 'fuzzy' ? 'hard' : 'again';
   }
 
   function scheduleRefresh(): void {
@@ -251,6 +289,37 @@ export function createSessionController(opts: SessionControllerOptions): Session
     },
 
     view: buildView,
+    bubbleState: buildBubble,
+
+    dismissBubble() {
+      if (!card || !bubbleOpen) return;
+      bubbleOpen = false;
+      publish();
+    },
+
+    openBubble() {
+      if (!host.running || !card || bubbleOpen) return;
+      bubbleOpen = true;
+      publish();
+    },
+
+    submitText(text) {
+      const current = card;
+      if (!host.running || !current || text.trim() === '') return { ok: false };
+      const match = matchAnswer(text, current.back);
+      if (!host.answer(gradeFor(match))) return { ok: false };
+      publish();
+      return { ok: true, match, expected: current.back };
+    },
+
+    revealAnswer: () => (host.running && card ? { ok: true, back: card.back } : { ok: false }),
+
+    selfGrade(grade) {
+      if (!host.running || !card || !host.answer(grade === 'good' ? 'good' : 'again')) return false;
+      publish();
+      return true;
+    },
+
     activeDeckId: () => (host.running && active ? active.deckId : null),
 
     dispatch(e) {

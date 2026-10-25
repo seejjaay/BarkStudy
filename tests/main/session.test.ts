@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BubbleState } from '../../src/shared/bubble';
 import type { Result, SessionView, StartRequest } from '../../src/shared/control';
 import { createLibrary, type Library } from '../../src/main/library';
 import { createSessionController, type SessionController } from '../../src/main/session';
@@ -123,6 +124,119 @@ describe('the loop', () => {
     ok(c.answer('good'));
     await c.settled();
     expect(running(c.view())).toMatchObject({ saveProblem: true, answered: 1 });
+  });
+});
+
+describe('the bubble', () => {
+  let bubbles: (BubbleState | null)[];
+  let c: SessionController;
+  beforeEach(() => {
+    bubbles = [];
+    ctl?.dispose();
+    c = createSessionController({ library: lib, seed: 11, publish: (v) => views.push(v), publishBubble: (b) => bubbles.push(b) });
+    ctl = c;
+  });
+  const up = () => {
+    ok(c.start(req()));
+    vi.advanceTimersByTime(61_000);
+  };
+
+  it('opens with the front of the card, and nothing before there is one', () => {
+    ok(c.start(req()));
+    expect(c.bubbleState()).toBeNull();
+    vi.advanceTimersByTime(61_000);
+    expect(c.bubbleState()).toEqual({ cardId: 'id2', front: 'France', open: true });
+    expect(bubbles.at(-1)).toEqual({ cardId: 'id2', front: 'France', open: true });
+  });
+
+  it('never carries the answer in what it publishes', () => {
+    up();
+    expect(JSON.stringify(bubbles)).not.toContain('Paris');
+  });
+
+  it('Esc dismisses it without answering; the card stays pending and opening brings it back', () => {
+    up();
+    c.dismissBubble();
+    expect(c.bubbleState()).toMatchObject({ open: false });
+    expect(running(c.view())).toMatchObject({ answered: 0, card: { front: 'France' } });
+    c.openBubble();
+    expect(c.bubbleState()).toMatchObject({ open: true });
+  });
+
+  it('a later re-ask of the same card reopens a dismissed bubble', () => {
+    up();
+    c.dismissBubble();
+    vi.advanceTimersByTime(30 * MIN);
+    expect(c.bubbleState()?.open).toBe(true);
+  });
+
+  it('opening with no card does nothing', () => {
+    ok(c.start(req()));
+    c.openBubble();
+    expect(c.bubbleState()).toBeNull();
+  });
+
+  it.each([
+    ['Paris', 'exact', 'good', 1],
+    ['  paris ', 'exact', 'good', 1],
+    ['Pariss', 'fuzzy', 'hard', 1],
+    ['London', 'wrong', 'again', 0],
+  ] as const)('typing %j is %s, graded %s, and %i treat(s)', async (typed, match, _grade, treats) => {
+    up();
+    expect(c.submitText(typed)).toEqual({ ok: true, match, expected: 'Paris' });
+    expect(running(c.view())).toMatchObject({ answered: 1, treats, card: null });
+    expect(c.bubbleState()).toBeNull();
+    await c.settled();
+    const card = lib.getDeck(deckId)!.cards[0]!;
+    expect(card.fsrs.reps).toBe(1);
+  });
+
+  it('a typed fuzzy match is saved as Hard and a wrong one as Again', async () => {
+    up();
+    c.submitText('Pariss');
+    await c.settled();
+    const hard = lib.getDeck(deckId)!.cards[0]!.fsrs;
+    vi.advanceTimersByTime(5 * MIN);
+    c.dispatch({ type: 'CHECKIN_DUE' });
+    c.submitText('Cusco');
+    await c.settled();
+    const second = lib.getDeck(deckId)!.cards[1]!.fsrs;
+    expect(hard.stability).toBeGreaterThan(second.stability);
+  });
+
+  it('an empty or blank answer is not an answer', () => {
+    up();
+    expect(c.submitText('')).toEqual({ ok: false });
+    expect(c.submitText('   ')).toEqual({ ok: false });
+    expect(running(c.view()).answered).toBe(0);
+  });
+
+  it('typing with no card up is refused', () => {
+    ok(c.start(req()));
+    expect(c.submitText('Paris')).toEqual({ ok: false });
+  });
+
+  it('reveal gives the back only when asked, and self-grading counts as an answer', () => {
+    up();
+    expect(c.revealAnswer()).toEqual({ ok: true, back: 'Paris' });
+    expect(c.selfGrade('again')).toBe(true);
+    expect(running(c.view())).toMatchObject({ answered: 1, treats: 0, card: null });
+    expect(c.selfGrade('good')).toBe(false);
+    expect(c.revealAnswer()).toEqual({ ok: false });
+  });
+
+  it('answering from the control window closes the bubble too', () => {
+    up();
+    ok(c.answer('good'));
+    expect(c.bubbleState()).toBeNull();
+    expect(bubbles.at(-1)).toBeNull();
+  });
+
+  it('ending the session closes it', async () => {
+    up();
+    ok(await c.end());
+    expect(c.bubbleState()).toBeNull();
+    expect(bubbles.at(-1)).toBeNull();
   });
 });
 
