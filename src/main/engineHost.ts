@@ -1,6 +1,6 @@
 import { createEngine, step, type EngineState } from '../engine/engine';
 import { DEFAULT_TUNING, TRAIT_PRESETS, type TraitPreset } from '../engine/tuning';
-import type { Action, Activity, Cap, Context, Event } from '../engine/types';
+import type { Action, Activity, Cap, Context, Event, Tuning } from '../engine/types';
 import type { GuiltTripRecord, Card } from '../shared/model';
 import { nextCard, review, type Grade } from '../shared/srs';
 import type { Clock } from './dogHost';
@@ -32,6 +32,8 @@ export interface HostSink {
   walkTo: (windowId: number) => void;
   effect: (action: EffectAction) => void;
   treat: () => void;
+  /** The answer just routed came after a wait over the guilt threshold. Comes after that answer's expression and line. */
+  guiltTrip: (waitedMs: number) => void;
 }
 
 export interface StartOptions {
@@ -43,6 +45,8 @@ export interface StartOptions {
   checkinMaxMinutes: number;
   /** How long the last guilt trip of an earlier session waited, for the greeting. */
   lastGuiltMs?: number | null;
+  /** Overrides on top of the defaults and the check-in minutes (e2e fast tuning). */
+  tuning?: Partial<Tuning>;
 }
 
 export interface SessionSummary {
@@ -211,6 +215,7 @@ export function createEngineHost(opts: EngineHostOptions): EngineHost {
         case 'RECORD_GUILT_TRIP':
           guiltTrips = [...guiltTrips, { at: clock.now(), waitedMs: a.waitedMs }];
           ctx = { ...ctx, lastGuiltMs: a.waitedMs };
+          sink.guiltTrip(a.waitedMs);
           break;
       }
     }
@@ -255,7 +260,7 @@ export function createEngineHost(opts: EngineHostOptions): EngineHost {
       ctx = {
         ...ctx,
         traits: TRAIT_PRESETS[o.preset],
-        tuning: { ...DEFAULT_TUNING, checkinMinMs: o.checkinMinMinutes * 60_000, checkinMaxMs: o.checkinMaxMinutes * 60_000 },
+        tuning: { ...DEFAULT_TUNING, checkinMinMs: o.checkinMinMinutes * 60_000, checkinMaxMs: o.checkinMaxMinutes * 60_000, ...o.tuning },
         lastGuiltMs: o.lastGuiltMs ?? null,
       };
       state = { ...state, stats: freshStats() };

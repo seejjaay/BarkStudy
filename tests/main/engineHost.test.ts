@@ -54,6 +54,7 @@ function makeSink(): { sink: HostSink; rec: Recorded } {
       rec.calls.push('treat');
       rec.treats++;
     },
+    guiltTrip: (waitedMs) => rec.calls.push(`guilt:${waitedMs}`),
   };
   return { sink, rec };
 }
@@ -176,6 +177,36 @@ describe('the study loop', () => {
     expect(summary.guiltTrips[0]!.waitedMs).toBeGreaterThanOrEqual(2 * MIN);
     expect(summary.guiltTrips[0]!.at).toBe(T0 + 61_000 + 3 * MIN);
     expect(summary.longestWaitMs).toBe(summary.guiltTrips[0]!.waitedMs);
+  });
+
+  it('a guilt trip reaches the sink, after the answer’s expression and line', () => {
+    const { host, rec } = setup();
+    host.start(opts());
+    vi.advanceTimersByTime(61_000);
+    vi.advanceTimersByTime(3 * MIN);
+    host.answer('good');
+    const waited = host.end().guiltTrips[0]!.waitedMs;
+    const guilt = rec.calls.indexOf(`guilt:${waited}`);
+    expect(guilt).toBeGreaterThan(-1);
+    expect(rec.calls.filter((c) => c.startsWith('guilt:'))).toHaveLength(1);
+    const last = (prefix: string) => rec.calls.reduce((at, c, i) => (c.startsWith(prefix) ? i : at), -1);
+    expect(guilt).toBeGreaterThan(last('expr:'));
+    expect(guilt).toBeGreaterThan(last('say:'));
+  });
+
+  it('a quick answer is no guilt trip', () => {
+    const { host, rec } = setup();
+    host.start(opts());
+    vi.advanceTimersByTime(61_000);
+    host.answer('good');
+    expect(rec.calls.some((c) => c.startsWith('guilt:'))).toBe(false);
+  });
+
+  it('tuning passed at the start overrides the check-in minutes', () => {
+    const { host, rec } = setup();
+    host.start(opts({ tuning: { checkinMinMs: 1000, checkinMaxMs: 1000 } }));
+    vi.advanceTimersByTime(1250);
+    expect(rec.shown).toHaveLength(1);
   });
 
   it('ending a session with a card up hides the bubble', () => {

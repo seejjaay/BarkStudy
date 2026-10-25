@@ -2,10 +2,17 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { GUILT_LINES } from '../../src/engine/lines';
+import { DEFAULT_TUNING } from '../../src/engine/tuning';
 import type { BubbleState } from '../../src/shared/bubble';
 import type { Result, SessionView, StartRequest } from '../../src/shared/control';
+import type { DisplayInfo, TrackedWindow } from '../../src/shared/geometry';
+import type { DogFrame, SpeechLine } from '../../src/shared/ipc';
+import type { SoundName } from '../../src/shared/sounds';
+import { createDogHost, type DogAction, type DogHost } from '../../src/main/dogHost';
+import { createEscapeKey, type EscapeKey } from '../../src/main/escapeKey';
 import { createLibrary, type Library } from '../../src/main/library';
-import { createSessionController, type SessionController } from '../../src/main/session';
+import { createSessionController, type SessionController, type SessionControllerOptions } from '../../src/main/session';
 import { createStorage, nodeFs } from '../../src/main/storage/io';
 
 const MIN = 60_000;
@@ -373,5 +380,309 @@ describe('publishing', () => {
     vi.advanceTimersByTime(5_000);
     expect(views.length - before).toBeGreaterThanOrEqual(4);
     expect(views.length - before).toBeLessThanOrEqual(6);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The presentation: what the session drives outward from the engine's actions (the dog, the Esc key, speech and sound).
+
+type Presentation = NonNullable<SessionControllerOptions['presentation']>;
+
+const DISPLAY: DisplayInfo = { id: 1, bounds: { x: 0, y: 0, width: 1536, height: 864 }, workArea: { x: 0, y: 0, width: 1536, height: 824 }, scaleFactor: 1 };
+const WINDOW: TrackedWindow = { id: 42, bounds: { x: 300, y: 300, width: 400, height: 300 }, z: 0, processName: 'a.exe', isForeground: true, fullscreen: false };
+
+const describeAction = (a: DogAction): string => (a.type === 'END_EFFECT' || a.type === 'CURL_UP' ? `perform:${a.type}` : `perform:${a.type}:${a.windowId}`);
+
+/** Every call the session makes outward, in order, with the fake time it was made at. */
+function recordPresentation() {
+  const log: { what: string; at: number }[] = [];
+  const lines: SpeechLine[] = [];
+  const sounds: { name: SoundName; volume: number }[] = [];
+  const note = (what: string) => log.push({ what, at: Date.now() });
+  const presentation: Presentation = {
+    dog: {
+      perform: (a) => note(describeAction(a)),
+      setMood: (name) => note(`mood:${name}`),
+      sulkAfter: () => note('sulkAfter'),
+      setStay: (on) => note(`stay:${on ? 'on' : 'off'}`),
+    },
+    escape: {
+      effectStarted: (maxMs) => note(`escape:held:${maxMs}`),
+      effectEnded: () => note('escape:released'),
+    },
+    speech: (line) => {
+      lines.push(line);
+      note(`say:${line.key}`);
+    },
+    sound: (name, volume) => {
+      sounds.push({ name, volume });
+      note(`sound:${name}`);
+    },
+  };
+  return { log, lines, sounds, presentation, whats: (from = 0) => log.slice(from).map((e) => e.what) };
+}
+
+/** A stand-in for Electron's globalShortcut: what is registered, and the callback a press would run. */
+function fakeHotkeys() {
+  const held = new Map<string, () => void>();
+  return {
+    held,
+    hotkeys: {
+      register: (accelerator: string, onPress: () => void) => {
+        if (held.has(accelerator)) return false;
+        held.set(accelerator, onPress);
+        return true;
+      },
+      unregister: (accelerator: string) => void held.delete(accelerator),
+    },
+  };
+}
+
+/** Moves fake time on in small steps until `done()` holds; fails the test if it never does within `maxMs`. */
+function until(done: () => boolean, maxMs: number, stepMs = 250): void {
+  for (let t = 0; !done(); t += stepMs) {
+    if (t > maxMs) throw new Error(`not reached within ${maxMs} ms`);
+    vi.advanceTimersByTime(stepMs);
+  }
+}
+
+describe('what the session drives outward', () => {
+  // With seed 11 and the classic preset, an ignored card on a known window runs laps at level 3, then dig-in at level 4.
+  let rec: ReturnType<typeof recordPresentation>;
+  let bubbles: (BubbleState | null)[];
+  let c: SessionController;
+  const make = (over: Partial<SessionControllerOptions> = {}): SessionController => {
+    ctl?.dispose();
+    c = createSessionController({ library: lib, seed: 11, publish: (v) => views.push(v), publishBubble: (b) => bubbles.push(b), presentation: rec.presentation, ...over });
+    ctl = c;
+    return c;
+  };
+  const has = (what: string, from = 0) => rec.whats(from).includes(what);
+  const cardUp = () => c.view().phase === 'running' && running(c.view()).card !== null;
+  const moods = () => rec.whats().filter((w) => w.startsWith('mood:'));
+  const stays = () => rec.whats().filter((w) => w.startsWith('stay:'));
+
+  beforeEach(() => {
+    rec = recordPresentation();
+    bubbles = [];
+    make();
+  });
+
+  it('engine effect actions reach the dog; RUN_LAPS and START_DIG_IN hold Esc for their real max, and END_EFFECT releases it', () => {
+    ok(c.start(req()));
+    c.setActiveWindow(42);
+    until(() => has('perform:RUN_LAPS:42'), 10 * MIN);
+    const laps = rec.whats().indexOf('perform:RUN_LAPS:42');
+    expect(rec.whats(laps).slice(0, 3)).toEqual(['perform:RUN_LAPS:42', `escape:held:${DEFAULT_TUNING.lapsMaxMs}`, 'sound:bark']);
+    until(() => has('perform:END_EFFECT', laps), DEFAULT_TUNING.lapsMaxMs + 1000);
+    const lapsEnd = rec.whats().indexOf('perform:END_EFFECT', laps);
+    expect(rec.whats(lapsEnd).slice(0, 2)).toEqual(['perform:END_EFFECT', 'escape:released']);
+
+    until(() => has('perform:START_DIG_IN:42'), 5 * MIN);
+    const dig = rec.whats().indexOf('perform:START_DIG_IN:42');
+    expect(rec.whats(dig).slice(0, 3)).toEqual(['perform:START_DIG_IN:42', `escape:held:${DEFAULT_TUNING.digInMaxMs}`, 'sound:scratch']);
+    until(() => has('perform:END_EFFECT', dig), DEFAULT_TUNING.digInMaxMs + 1000);
+    expect(rec.whats(rec.whats().indexOf('perform:END_EFFECT', dig)).slice(0, 2)).toEqual(['perform:END_EFFECT', 'escape:released']);
+    expect(moods()).toEqual(expect.arrayContaining(['mood:curious', 'mood:zoomies', 'mood:dig']));
+  });
+
+  it('moods reach the dog and the sound gate: a whine plays whine at the settings volume', async () => {
+    ok(await lib.updateSettings({ volume: 0.65 }));
+    ok(c.start(req())); // no window to run round, so the escalation is pleas and whines
+    until(() => has('mood:whine'), 10 * MIN);
+    expect(moods()[0]).toBe('mood:curious');
+    expect(rec.sounds).toContainEqual({ name: 'whine', volume: 0.65 });
+    expect(rec.sounds.every((s) => s.name === 'whine')).toBe(true);
+  });
+
+  it('a happy answer yips; with sound off, or while paused, nothing plays', async () => {
+    ok(c.start(req()));
+    until(cardUp, 2 * MIN);
+    ok(c.answer('good'));
+    expect(moods().at(-1)).toMatch(/^mood:(happy|ecstatic)$/);
+    expect(rec.sounds).toEqual([{ name: 'yip', volume: 0.4 }]);
+
+    vi.advanceTimersByTime(10_000); // past the gap between sounds
+    until(cardUp, 2 * MIN);
+    ok(c.control({ action: 'pause' }));
+    ok(c.answer('good'));
+    expect(moods().at(-1)).toMatch(/^mood:(happy|ecstatic)$/);
+    expect(rec.sounds).toHaveLength(1);
+
+    ok(c.control({ action: 'resume' }));
+    ok(await lib.updateSettings({ soundOn: false }));
+    const from = rec.log.length;
+    until(() => has('mood:whine', from), 10 * MIN);
+    expect(rec.sounds).toHaveLength(1);
+  });
+
+  it('an answer with a guilt trip calls sulkAfter after the answer’s mood, and the guilt line passes the speech gate with its minutes', () => {
+    ok(c.start(req()));
+    until(cardUp, 2 * MIN);
+    const cardAt = Date.now();
+    until(() => Date.now() - cardAt >= 2 * MIN, 3 * MIN);
+    // Answer straight after an escalation line, while any ordinary line would still be held back by the gate.
+    const said = rec.lines.length;
+    until(() => rec.lines.length > said, 2 * MIN);
+    const from = rec.log.length;
+    ok(c.answer('good'));
+    const after = rec.whats(from);
+    const mood = after.findIndex((w) => w === 'mood:happy' || w === 'mood:ecstatic');
+    expect(mood).toBeGreaterThan(-1);
+    expect(after.indexOf('sulkAfter')).toBeGreaterThan(mood);
+    const line = rec.lines.at(-1)!;
+    expect(GUILT_LINES).toContain(line.key);
+    expect(line.params?.['minutes']).toBeGreaterThanOrEqual(2);
+    expect(new Set(rec.lines.map((l) => l.id)).size).toBe(rec.lines.length);
+  });
+
+  it('a quick answer gets its mood and no sulk', () => {
+    ok(c.start(req()));
+    until(cardUp, 2 * MIN);
+    ok(c.answer('good'));
+    expect(rec.whats()).not.toContain('sulkAfter');
+    expect(GUILT_LINES).not.toContain(rec.lines.at(-1)?.key);
+  });
+
+  it('a dig that ends with the card still pending reopens the bubble', () => {
+    ok(c.start(req()));
+    c.setActiveWindow(42);
+    until(() => has('perform:START_DIG_IN:42'), 10 * MIN);
+    const dig = rec.log.length;
+    c.dismissBubble();
+    expect(c.bubbleState()?.open).toBe(false);
+    until(() => has('perform:END_EFFECT', dig), DEFAULT_TUNING.digInMaxMs + 1000);
+    expect(c.bubbleState()?.open).toBe(true);
+    expect(bubbles.at(-1)?.open).toBe(true);
+  });
+
+  it('a dig that Leave it ends does not bring the bubble back', () => {
+    ok(c.start(req()));
+    c.setActiveWindow(42);
+    until(() => has('perform:START_DIG_IN:42'), 10 * MIN);
+    c.dismissBubble();
+    ok(c.control({ action: 'pause' }));
+    expect(rec.whats().at(-1)).toBe('escape:released');
+    expect(c.bubbleState()?.open).toBe(false);
+  });
+
+  it('effectLost dispatches ESC_PRESSED: the effect ends and the level is kept', () => {
+    ok(c.start(req()));
+    c.setActiveWindow(42);
+    until(() => has('perform:RUN_LAPS:42'), 10 * MIN);
+    const from = rec.log.length;
+    c.effectLost();
+    expect(rec.whats(from)).toEqual(['perform:END_EFFECT', 'escape:released']);
+    expect(cardUp()).toBe(true);
+    c.effectLost(); // a late report with nothing running changes nothing
+    expect(rec.log.length).toBe(from + 2);
+    // Laps were level 3; the next step is still level 4's dig-in, not a fresh start at the bottom of the ladder.
+    until(() => has('perform:START_DIG_IN:42', from), 2 * MIN);
+  });
+
+  it('stay on and off reach the dog, including a stay that runs out and a session that ends during one', async () => {
+    ok(c.start(req()));
+    ok(c.control({ action: 'stay-on', minutes: 15 }));
+    expect(stays()).toEqual(['stay:on']);
+    vi.advanceTimersByTime(5_000); // the view refreshes, and the dog is not told again
+    ok(c.control({ action: 'stay-off' }));
+    expect(stays()).toEqual(['stay:on', 'stay:off']);
+    ok(c.control({ action: 'stay-on', minutes: 15 }));
+    vi.advanceTimersByTime(15 * MIN + 2_000);
+    expect(stays()).toEqual(['stay:on', 'stay:off', 'stay:on', 'stay:off']);
+    ok(c.control({ action: 'stay-on', minutes: 15 }));
+    const ending = c.end();
+    expect(stays().at(-1)).toBe('stay:off');
+    ok(await ending);
+  });
+
+  it('Review Focus 4: Esc during an effect while the bubble is open ends the effect and leaves the bubble open; the second Esc dismisses it', () => {
+    const keys = fakeHotkeys();
+    const escape: EscapeKey = createEscapeKey({ hotkeys: keys.hotkeys, onPress: () => c.dispatch({ type: 'ESC_PRESSED' }) });
+    make({ presentation: { ...rec.presentation, escape } });
+    try {
+      ok(c.start(req()));
+      c.setActiveWindow(42);
+      until(() => escape.held, 10 * MIN);
+      expect(c.bubbleState()?.open).toBe(true); // the user is typing in it
+      const from = rec.log.length;
+      keys.held.get('Escape')!();
+      expect(escape.held).toBe(false);
+      expect(keys.held.has('Escape')).toBe(false);
+      expect(rec.whats(from)).toContain('perform:END_EFFECT');
+      expect(c.bubbleState()?.open).toBe(true);
+      // Esc is no longer global, so the next press reaches the focused bubble, which dismisses itself.
+      c.dismissBubble();
+      expect(c.bubbleState()?.open).toBe(false);
+      expect(running(c.view())).toMatchObject({ answered: 0, card: { front: 'France' } });
+    } finally {
+      escape.dispose();
+    }
+  });
+
+  it.each(['pause', 'end'] as const)(
+    'Review Focus 5: %s mid-effect releases Esc at once, returns him to roaming, and plays no more sound or speech',
+    async (how) => {
+      const keys = fakeHotkeys();
+      const seen: { frame: DogFrame | null } = { frame: null };
+      const dog: DogHost = createDogHost({ seed: 5, sink: { send: (_id, f) => void (f && (seen.frame = f)) }, onEffectLost: () => c.effectLost() });
+      dog.setRoaming(false);
+      dog.setWorld([WINDOW], [DISPLAY]);
+      const escape = createEscapeKey({ hotkeys: keys.hotkeys, onPress: () => c.dispatch({ type: 'ESC_PRESSED' }) });
+      make({ presentation: { dog, escape, speech: rec.presentation.speech, sound: rec.presentation.sound } });
+      try {
+        ok(c.start(req()));
+        c.setActiveWindow(WINDOW.id);
+        until(() => dog.behaviour === 'laps' || dog.behaviour === 'dig', 10 * MIN);
+        expect(escape.held).toBe(true);
+        expect(seen.frame?.effect).toBeDefined();
+        const said = rec.lines.length;
+        const played = rec.sounds.length;
+
+        if (how === 'pause') ok(c.control({ action: 'pause' })); // what Leave it does
+        const ending = how === 'end' ? c.end() : null;
+        expect(escape.held).toBe(false);
+        expect(keys.held.has('Escape')).toBe(false);
+        expect(dog.behaviour).toBe('roam');
+        if (ending) ok(await ending);
+
+        vi.advanceTimersByTime(10 * MIN);
+        expect(rec.lines).toHaveLength(said);
+        expect(rec.sounds).toHaveLength(played);
+        expect(seen.frame?.effect).toBeUndefined();
+        expect(dog.behaviour).toBe('roam');
+        expect(escape.held).toBe(false);
+      } finally {
+        dog.dispose();
+        escape.dispose();
+      }
+    },
+  );
+
+  it('fastTuning shrinks check-in, escalation and guilt timings 100× and leaves effect durations', () => {
+    make({ fastTuning: true });
+    ok(c.start(req())); // a check-in every minute: 600 ms
+    c.setActiveWindow(42);
+    vi.advanceTimersByTime(1000);
+    expect(cardUp()).toBe(true);
+    const atCard = moods().length;
+    vi.advanceTimersByTime(1000); // the first escalation (a timeout) is 90 s for classic patience: 900 ms
+    expect(moods().length).toBeGreaterThan(atCard);
+
+    // Effects keep their real length: the engine's own END_EFFECT comes the real max after the last effect began.
+    until(() => has('perform:END_EFFECT'), 30_000, 50);
+    const end = rec.log.find((e) => e.what === 'perform:END_EFFECT')!;
+    const began = rec.log.filter((e) => e.what.startsWith('escape:held:') && e.at <= end.at).at(-1)!;
+    const maxMs = Number(began.what.split(':')[2]);
+    expect([DEFAULT_TUNING.lapsMaxMs, DEFAULT_TUNING.digInMaxMs]).toContain(maxMs);
+    expect(end.at - began.at).toBeGreaterThanOrEqual(maxMs - 250);
+    expect(end.at - began.at).toBeLessThanOrEqual(maxMs + 250);
+
+    // Waiting a few seconds is already over the guilt threshold (2 min / 100).
+    ok(c.answer('good'));
+    expect(rec.whats()).toContain('sulkAfter');
+    expect(GUILT_LINES).toContain(rec.lines.at(-1)?.key);
+    // Lines still keep their real 30 s gap: only the card's own line and the guilt line got through.
+    expect(rec.lines).toHaveLength(2);
   });
 });
