@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { DeckSummary, Result, SessionView, StartRequest } from '../../src/shared/control';
-import { makeTrayBitmap } from '../../src/main/trayIcon';
+import { makeIcon } from '../../src/main/icon';
 import {
   MAX_TRAY_DECKS,
   buildTrayMenu,
@@ -254,7 +254,7 @@ describe('toggleLeaveIt', () => {
 describe('the tray icon', () => {
   it('is a transparent square with an opaque roll in the middle and ears', () => {
     const size = 32;
-    const px = makeTrayBitmap(size);
+    const px = makeIcon(size);
     expect(px.length).toBe(size * size * 4);
     const alphaAt = (x: number, y: number) => px[(y * size + x) * 4 + 3];
     expect(alphaAt(0, 0)).toBe(0);
@@ -267,6 +267,6 @@ describe('the tray icon', () => {
   });
 
   it('works at the other sizes Windows asks for', () => {
-    for (const size of [16, 24, 48]) expect(makeTrayBitmap(size).length).toBe(size * size * 4);
+    for (const size of [16, 24, 48]) expect(makeIcon(size).length).toBe(size * size * 4);
   });
 });

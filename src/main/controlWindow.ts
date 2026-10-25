@@ -1,5 +1,6 @@
 import { BrowserWindow, type WebContents } from 'electron';
 import { CONTROL_CHANNEL, type ControlEvent } from '../shared/control';
+import { windowIcon } from './icon';
 import { UI_PARTITION } from './network';
 
 export interface ControlWindow {
@@ -31,6 +32,7 @@ export function createControlWindow(opts: { preload: string; load: (w: BrowserWi
       show: false,
       title: 'BarkStudy',
       backgroundColor: '#f6efe4',
+      icon: windowIcon(),
       autoHideMenuBar: true,
       webPreferences: {
         preload: opts.preload,

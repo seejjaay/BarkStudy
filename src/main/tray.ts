@@ -1,5 +1,5 @@
 import { Menu, Tray, nativeImage, type MenuItemConstructorOptions } from 'electron';
-import { makeTrayBitmap } from './trayIcon';
+import { makeIcon } from './icon';
 import { buildTrayMenu, parseTrayAction, trayTooltip, type MenuItemSpec, type TrayAction, type TrayInputs } from './trayModel';
 
 export interface AppTray {
@@ -32,7 +32,7 @@ function toTemplate(items: MenuItemSpec[], click: (id: string) => void): MenuIte
 function trayImage() {
   const image = nativeImage.createEmpty();
   for (const [size, scaleFactor] of [[16, 1], [24, 1.5], [32, 2], [48, 3]] as const) {
-    image.addRepresentation({ scaleFactor, width: size, height: size, buffer: makeTrayBitmap(size) });
+    image.addRepresentation({ scaleFactor, width: size, height: size, buffer: makeIcon(size) });
   }
   return image;
 }
