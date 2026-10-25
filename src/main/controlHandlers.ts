@@ -1,6 +1,7 @@
 import {
   OP_NAMES,
   type AppError,
+  type CardUndo,
   type LibrarySnapshot,
   type OpName,
   type Result,
@@ -50,6 +51,7 @@ export interface ControlHandlers {
 
 const fail = (code: AppError['code'], message: string): { ok: false; error: AppError } => ({ ok: false, error: { code, message } });
 const bad = () => fail('invalid-request', 'that request was not understood');
+const IN_USE = fail('deck-in-use', 'a session is using that deck right now');
 const isOp = (v: unknown): v is OpName => typeof v === 'string' && (OP_NAMES as readonly string[]).includes(v);
 const rec = (v: unknown): Record<string, unknown> | null => (typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 const GRADES: readonly string[] = ['again', 'hard', 'good'];
@@ -60,6 +62,13 @@ export function safeFileName(name: string): string {
   const replaced = [...name].map((ch) => (ch.charCodeAt(0) < 32 || forbidden.includes(ch) ? '_' : ch)).join('');
   const cleaned = replaced.replace(/[. ]+$/, '').trim();
   return cleaned.length > 0 ? cleaned : 'deck';
+}
+
+function parseCardUndo(v: unknown): CardUndo | null {
+  const a = rec(v);
+  if (!a || typeof a['deckId'] !== 'string' || typeof a['index'] !== 'number' || !Number.isInteger(a['index']) || a['index'] < 0) return null;
+  const candidate = { decks: [{ id: a['deckId'], name: 'x', createdAt: 0, cards: [a['card']] }] };
+  return isDecksFile(candidate) ? { deckId: a['deckId'], card: candidate.decks[0]!.cards[0]!, index: a['index'] } : null;
 }
 
 function parseToken(v: unknown): UndoToken | null {
@@ -129,6 +138,8 @@ export function createControlHandlers(opts: ControlHandlerOptions): ControlHandl
     async handle(op, args) {
       if (!isOp(op)) throw new Error('unknown operation');
       const a = rec(args);
+      // The running session holds its own copy of the deck's cards, so the deck is frozen while it runs.
+      const inUse = (deckId: unknown) => (typeof deckId === 'string' && deckId === session.activeDeckId() ? IN_USE : null);
       switch (op) {
         case 'app:snapshot':
           return snapshot();
@@ -137,9 +148,27 @@ export function createControlHandlers(opts: ControlHandlerOptions): ControlHandl
         case 'deck:create':
           return a && typeof a['name'] === 'string' ? library.createDeck(a['name']) : bad();
         case 'deck:rename':
-          return a && typeof a['id'] === 'string' && typeof a['name'] === 'string' ? library.renameDeck(a['id'], a['name']) : bad();
+          return a && typeof a['id'] === 'string' && typeof a['name'] === 'string' ? (inUse(a['id']) ?? library.renameDeck(a['id'], a['name'])) : bad();
         case 'deck:delete':
-          return a && typeof a['id'] === 'string' ? library.deleteDeck(a['id']) : bad();
+          return a && typeof a['id'] === 'string' ? (inUse(a['id']) ?? library.deleteDeck(a['id'])) : bad();
+        case 'card:list':
+          return a && typeof a['deckId'] === 'string' ? library.listCards(a['deckId']) : bad();
+        case 'card:add':
+          return a && typeof a['deckId'] === 'string' && typeof a['front'] === 'string' && typeof a['back'] === 'string'
+            ? (inUse(a['deckId']) ?? library.addCard(a['deckId'], a['front'], a['back']))
+            : bad();
+        case 'card:edit':
+          return a && typeof a['deckId'] === 'string' && typeof a['cardId'] === 'string' && typeof a['front'] === 'string' && typeof a['back'] === 'string'
+            ? (inUse(a['deckId']) ?? library.editCard(a['deckId'], a['cardId'], a['front'], a['back']))
+            : bad();
+        case 'card:delete':
+          return a && typeof a['deckId'] === 'string' && typeof a['cardId'] === 'string'
+            ? (inUse(a['deckId']) ?? library.deleteCard(a['deckId'], a['cardId']))
+            : bad();
+        case 'card:restore': {
+          const undo = parseCardUndo(args);
+          return undo ? (inUse(undo.deckId) ?? library.restoreCard(undo)) : bad();
+        }
         case 'deck:restore': {
           const token = parseToken(args);
           return token ? library.restoreDeck(token) : bad();

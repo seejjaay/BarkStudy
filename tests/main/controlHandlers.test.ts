@@ -69,6 +69,13 @@ describe('malformed arguments', () => {
     ['deck:import-text', { deckId: null, name: 'x' }],
     ['deck:import-file', { deckId: 7 }],
     ['deck:export', null],
+    ['card:list', {}],
+    ['card:add', { deckId: 'd', front: 'a' }],
+    ['card:add', { deckId: 1, front: 'a', back: 'b' }],
+    ['card:edit', { deckId: 'd', cardId: 'c', front: 'a' }],
+    ['card:delete', { deckId: 'd' }],
+    ['card:restore', { deckId: 'd', index: 0, card: { id: 5 } }],
+    ['card:restore', { deckId: 'd', index: 1.5, card: {} }],
     ['session:start', { deckId: 'x' }],
     ['session:start', { deckId: 'x', topic: '', checkinMinMinutes: '1', checkinMaxMinutes: 2 }],
     ['session:answer', { grade: 'perfect' }],
@@ -98,6 +105,45 @@ describe('decks', () => {
     const undo = ok(await call<Result<unknown>>('deck:delete', { id: made.id }));
     ok(await call('deck:restore', JSON.parse(JSON.stringify(undo))));
     expect(lib.listDecks()).toHaveLength(1);
+  });
+});
+
+describe('cards', () => {
+  it('add, list, edit, delete and restore go through the library, including an undo token that went through JSON', async () => {
+    const d = ok(await lib.createDeck('French'));
+    const card = ok(await call<Result<{ id: string; front: string }>>('card:add', { deckId: d.id, front: 'chat', back: 'cat' }));
+    expect(card.front).toBe('chat');
+    ok(await call('card:edit', { deckId: d.id, cardId: card.id, front: 'le chat', back: 'the cat' }));
+    expect(ok(await call<Result<{ front: string }[]>>('card:list', { deckId: d.id })).map((c) => c.front)).toEqual(['le chat']);
+    const undo = ok(await call<Result<unknown>>('card:delete', { deckId: d.id, cardId: card.id }));
+    expect(ok(await call<Result<unknown[]>>('card:list', { deckId: d.id }))).toEqual([]);
+    ok(await call('card:restore', JSON.parse(JSON.stringify(undo))));
+    expect(ok(await call<Result<unknown[]>>('card:list', { deckId: d.id }))).toHaveLength(1);
+  });
+
+  it('the deck a session is running on cannot be renamed, deleted or have its cards changed, but can still be read', async () => {
+    const made = ok(await lib.importAsNewDeck('Live', 'a,b\nc,d'));
+    const cardId = ok(lib.listCards(made.deckId))[0]!.id;
+    const undo = ok(await lib.deleteCard(made.deckId, cardId));
+    ok(session.start({ deckId: made.deckId, topic: '', checkinMinMinutes: 5, checkinMaxMinutes: 15 }));
+    const blocked: [string, unknown][] = [
+      ['deck:rename', { id: made.deckId, name: 'New' }],
+      ['deck:delete', { id: made.deckId }],
+      ['card:add', { deckId: made.deckId, front: 'x', back: 'y' }],
+      ['card:edit', { deckId: made.deckId, cardId: 'c', front: 'x', back: 'y' }],
+      ['card:delete', { deckId: made.deckId, cardId: 'c' }],
+      ['card:restore', JSON.parse(JSON.stringify(undo))],
+    ];
+    for (const [op, args] of blocked) {
+      const r = await call<Result<unknown>>(op, args);
+      expect(r.ok, op).toBe(false);
+      if (!r.ok) expect(r.error.code, op).toBe('deck-in-use');
+    }
+    expect(lib.listDecks()[0]?.name).toBe('Live');
+    ok(await call('card:list', { deckId: made.deckId }));
+    ok(await call('deck:import-text', { deckId: made.deckId, name: '', text: 'e,f' }));
+    ok(await session.end());
+    ok(await call('deck:rename', { id: made.deckId, name: 'Done' }));
   });
 });
 

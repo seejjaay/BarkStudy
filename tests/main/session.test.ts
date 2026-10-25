@@ -78,6 +78,17 @@ describe('starting', () => {
   });
 });
 
+describe('active deck', () => {
+  it('names the deck only while a session runs', async () => {
+    const c = ctl!;
+    expect(c.activeDeckId()).toBeNull();
+    ok(c.start(req()));
+    expect(c.activeDeckId()).toBe(deckId);
+    ok(await c.end());
+    expect(c.activeDeckId()).toBeNull();
+  });
+});
+
 describe('the loop', () => {
   it('a card appears at the check-in and the view carries it', () => {
     const c = ctl!;

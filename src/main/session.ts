@@ -37,6 +37,8 @@ export interface SessionController {
   /** Leaves the end-of-session summary and returns to idle. */
   dismissSummary: () => void;
   view: () => SessionView;
+  /** The deck a running session is drawing from, or null. */
+  activeDeckId: () => string | null;
   /** Idle, away and suppression changes, and anything else the engine takes from outside. */
   dispatch: (e: ExternalEvent) => void;
   setBusy: (busy: boolean) => void;
@@ -249,6 +251,7 @@ export function createSessionController(opts: SessionControllerOptions): Session
     },
 
     view: buildView,
+    activeDeckId: () => (host.running && active ? active.deckId : null),
 
     dispatch(e) {
       host.dispatch(e);
