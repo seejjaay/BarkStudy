@@ -7,6 +7,7 @@ const frame = (over: Partial<DogFrame> = {}): DogFrame => ({
   y: 400,
   facing: 1,
   pose: 'sit',
+  mood: 'idle',
   clip: [{ x: 468, y: 352, width: 64, height: 48 }],
   reducedMotion: false,
   ...over,

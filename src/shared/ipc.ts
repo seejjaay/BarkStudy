@@ -1,5 +1,6 @@
 import type { BubbleState, RevealResult, SelfGrade, SubmitResult } from './bubble';
 import type { Rect } from './geometry';
+import type { Mood } from './mood';
 
 export const IPC = {
   overlayFrame: 'overlay:frame',
@@ -16,12 +17,31 @@ export const IPC = {
   bubbleFocus: 'bubble:focus',
 } as const;
 
+/** How the renderer draws the body. A renderer that does not know a pose draws `walk`. */
+export type DogPose = 'walk' | 'sit' | 'fall' | 'run' | 'hop' | 'dig' | 'curl';
+
+/** Which edge of the target window he is on during laps. */
+export type LapSide = 'top' | 'right' | 'bottom' | 'left';
+
+/** A running effect (laps round a window, or digging in). `rect` is the target window's live rect, in the same coordinate space as the frame. */
+export interface EffectState {
+  kind: 'laps' | 'dig';
+  seed: number;
+  elapsedMs: number;
+  rect: Rect;
+}
+
 /** What one overlay draws. Coordinates are DIP, relative to that display's top-left corner. `x`/`y` are the centre of the feet. */
 export interface DogFrame {
   x: number;
   y: number;
   facing: 1 | -1;
-  pose: 'walk' | 'sit' | 'fall';
+  pose: DogPose;
+  mood: Mood;
+  /** Only during laps. */
+  side?: LapSide;
+  /** Only while an effect runs. */
+  effect?: EffectState;
   /** The parts of the sprite rectangle that are not hidden behind windows (same coordinate space). */
   clip: Rect[];
   reducedMotion: boolean;

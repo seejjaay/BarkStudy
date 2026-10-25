@@ -80,6 +80,13 @@ describe('dog host', () => {
     host.dispose();
   });
 
+  it("a fresh dog's frame has mood idle", () => {
+    const { host, last } = setup();
+    host.setWorld([], [D1]);
+    expect(last(1)?.mood).toBe('idle');
+    host.dispose();
+  });
+
   it('does not resend an identical frame', () => {
     const { host, calls } = setup();
     host.setWorld([], [D1]);

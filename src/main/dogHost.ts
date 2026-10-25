@@ -111,6 +111,7 @@ export function createDogHost(opts: { seed: number; sink: FrameSink; clock?: Clo
       y: body.y - o.y,
       facing: body.facing,
       pose: !body.anchor ? 'fall' : roam.walk !== 0 ? 'walk' : 'sit',
+      mood: 'idle',
       clip: clipSprite(sprite, occluders).map((r) => ({ ...r, x: r.x - o.x, y: r.y - o.y })),
       reducedMotion,
     };
