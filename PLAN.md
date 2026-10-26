@@ -284,7 +284,7 @@ step(s: EngineState, e: Event, ctx: Context): { state: EngineState; actions: Act
 - **T3.8 Bubble.** Question, answer input, "Show answer" → Got it / Missed it, result feedback. Fully keyboard-operable: Enter submits, Esc dismisses the bubble without counting as an answer.
 - **T3.9 Tray + hotkeys.** The tray is the always-there nav: Start/End session, Stay (15/25/50 min), Leave it, Open BarkStudy, Quit. `Ctrl+Alt+L` toggles PAUSE/RESUME. A registration conflict is shown in Settings with a rebind prompt, never swallowed. A single-instance lock means a second launch focuses the control window.
 
-## Milestone 4: Escalation, art and sound
+## Milestone 4: Escalation, art and sound *(done: detailed plan in `docs/superpowers/plans/2026-10-25-m4-escalation-art-sound.md`, design in `docs/superpowers/specs/2026-10-25-m4-escalation-art-sound-design.md`; the outline below is the original. Art is drawn in code and sound is synthesized, both as swappable placeholders, so final sprite sheets, icons and recorded sounds are still open. Manual rows are in `docs/test-matrix.md`.)*
 
 *Acceptance: the full escalation ladder (idle → curious → pleading → zoomies → dig-in → answer → sulk) plays in a real session, respects the cap, and Esc/Leave it stop it at any point.*
 

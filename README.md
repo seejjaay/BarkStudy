@@ -1,6 +1,6 @@
 # BarkStudy
 
-Pandesal is a dog that walks your real title bars, schedules your flashcards with spaced repetition, and escalates when you ignore her. She stays inside an intensity cap you set, is always escapable, and never phones home with your data.
+Pandesal is a dog that walks your real title bars, schedules your flashcards with spaced repetition, and escalates when you ignore him. He stays inside an intensity cap you set, is always escapable, and never phones home with your data.
 
 Free, open source (MIT), Windows only. Work in progress: see [PLAN.md](PLAN.md) for the roadmap and [docs/SPEC.md](docs/SPEC.md) for the original vision.
 
@@ -18,11 +18,13 @@ npm run dev                              # run the app; Ctrl+Alt+Q quits (a tray
 
 If your terminal sets `ELECTRON_RUN_AS_NODE` (VS Code's does), unset it before launching Electron by hand. Manual checks are listed in [docs/test-matrix.md](docs/test-matrix.md).
 
+Pandesal's sounds (bark, whine, happy yip, dig scratch) are short placeholders synthesized in code. The tray menu has a **Sounds** toggle and a **Volume** submenu; he makes no sound while paused, on a Stay, away, or in an excluded or fullscreen app.
+
 The engine in `src/engine` is pure TypeScript: no Electron, React, DOM or Node imports, and no `Math.random()`. ESLint and `tsconfig.engine.json` both enforce that.
 
 ## How Pandesal stays safe
 
-Pandesal can bark, run laps around your window and dig at a title bar, so the rules about *when* she may do that are checked by machine, not just by reading the code.
+Pandesal can bark, run laps around your window and dig at a title bar, so the rules about *when* he may do that are checked by machine, not just by reading the code.
 
 The engine is split in two. A small **rule layer** (a finite state machine) decides what is allowed: the escalation level, your intensity cap, pause, Stay, cooldowns, whether you are away or in a suppressed app. A **personality layer** only picks among the options the rules allow, using a seeded random number generator. A **clock** turns real time into the timer events the rules react to. Because the rules are finite and timers are just events, they can be checked exhaustively.
 

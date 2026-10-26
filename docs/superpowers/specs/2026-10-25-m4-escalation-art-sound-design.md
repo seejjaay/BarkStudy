@@ -172,7 +172,7 @@ If the user is typing in the bubble during an effect, the first Esc ends the eff
 - **With fake clocks:**
   - `dogHost`: every behaviour starts and ends; `onEffectLost` fires exactly once; the hard stop works with no `END_EFFECT`; reduced motion means no movement.
   - `escapeKey`: unit tests, plus a property test that Esc is never held without an effect and never for longer than max + 500 ms in one stretch.
-- **e2e acceptance** (`BARKSTUDY_FAST_TUNING`, honoured only in e2e on an unpackaged build, shrinks the check-in, escalation and guilt-threshold timings about 100×; effect durations stay real, so laps and dig-in can be observed):
+- **e2e acceptance** (`BARKSTUDY_FAST_TUNING`, honoured only in e2e on an unpackaged build, shrinks the check-in, escalation and guilt-threshold timings about 100×; effect durations stay real, so laps and dig-in can be observed. `BARKSTUDY_SEED=<integer>`, honoured under the same gate, pins the engine's random number generator, because the engine picks intents at random and only some seeds climb the whole ladder; seed 14 does, and the escalation e2e and `scripts/os-check.cjs` use it. A non-numeric value falls back to a time-based seed):
   - an ignored card produces curious, pleading, zoomies and dig-in in order, read from the frames' `mood` and `effect`;
   - at cap 3 there is no dig-in;
   - a forced Esc press during laps ends the effect and releases Esc;
