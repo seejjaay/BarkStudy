@@ -279,6 +279,8 @@ export function createDogHost(opts: DogHostOptions): DogHost {
       const from = clamp(body.x - target.bounds.x, 0, target.bounds.width);
       effect = { kind, windowId, seed, elapsed: 0, limit, lap: { from, at: 0 } };
     }
+    // The engine moved on to this effect, so a loss report for an earlier one is stale: it would end this one at once.
+    lostPending = false;
     become(kind);
     moodPlan = [];
     applyMood(EFFECT_MOOD[kind]);
@@ -541,6 +543,8 @@ export function createDogHost(opts: DogHostOptions): DogHost {
             startEffect('dig', action.windowId);
             break;
           case 'END_EFFECT':
+            // The engine ended it itself, so a pending loss report would be a second, stale end.
+            lostPending = false;
             endEffect();
             break;
           // An effect runs until END_EFFECT, its limit or a Stay, and a Stay until it is lifted: a hop or a curl cuts neither short.

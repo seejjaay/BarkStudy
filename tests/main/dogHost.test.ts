@@ -454,6 +454,34 @@ describe('dog host behaviours', () => {
     }
   });
 
+  it('a loss report still pending does not cut short the next effect the engine starts', () => {
+    const U = win(9, 900);
+    for (const next of ['RUN_LAPS', 'START_DIG_IN'] as const) {
+      const { host, advance, lost } = behaviourHost();
+      host.setWorld([T, U], [D1]);
+      host.perform({ type: 'RUN_LAPS', windowId: 7 });
+      advance(300);
+      host.setWorld([U], [D1]); // E1's window is gone; the report waits for the next tick
+      host.perform({ type: next, windowId: 9 }); // the engine, meanwhile, starts E2
+      advance(TICK_MS);
+      expect(lost()).toBe(0);
+      expect(host.behaviour).toBe(next === 'RUN_LAPS' ? 'laps' : 'dig');
+      host.dispose();
+    }
+  });
+
+  it('the engine ending the effect itself withdraws a pending loss report', () => {
+    const { host, advance, lost } = behaviourHost();
+    host.setWorld([T], [D1]);
+    host.perform({ type: 'RUN_LAPS', windowId: 7 });
+    advance(300);
+    host.setWorld([], [D1]);
+    host.perform({ type: 'END_EFFECT' });
+    advance(TICK_MS);
+    expect(lost()).toBe(0);
+    host.dispose();
+  });
+
   it('the tracker going down mid-effect counts as the target lost', () => {
     const { host, advance, lost } = behaviourHost();
     host.setWorld([T], [D1]);
