@@ -304,11 +304,11 @@ export function createDogHost(opts: DogHostOptions): DogHost {
   /** Ends the effect where he is: after laps he falls to the nearest platform, after dig-in he stays on the title bar. */
   function endEffect(): void {
     const e = effect;
-    if (!e) return;
     effect = null;
     side = undefined;
-    if (behaviour === e.kind) become(resting());
-    if (mood === EFFECT_MOOD[e.kind]) {
+    if (e && behaviour === e.kind) become(resting());
+    // The effect's mood goes with it; so does the mood of one he could not start, which arrives with no effect to end.
+    if (mood === EFFECT_MOOD.laps || mood === EFFECT_MOOD.dig) {
       moodPlan = [];
       applyMood('idle');
     }
@@ -597,6 +597,11 @@ export function createDogHost(opts: DogHostOptions): DogHost {
           become('sit-stay');
         } else if (behaviour === 'sit-stay') {
           become(resting());
+          // The engine sends nothing when a Stay ends, so its sit mood would outlast it.
+          if (mood === 'sit') {
+            moodPlan = [];
+            applyMood('idle');
+          }
         }
       });
     },

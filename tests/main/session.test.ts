@@ -580,8 +580,9 @@ describe('what the session drives outward', () => {
     c.setActiveWindow(42);
     until(() => has('perform:START_DIG_IN:42'), 10 * MIN);
     c.dismissBubble();
+    const from = rec.log.length;
     ok(c.control({ action: 'pause' }));
-    expect(rec.whats().at(-1)).toBe('escape:released');
+    expect(rec.whats(from)).toEqual(['perform:END_EFFECT', 'escape:released', 'mood:idle', 'wake']);
     expect(c.bubbleState()?.open).toBe(false);
   });
 
@@ -705,6 +706,63 @@ describe('what the session drives outward', () => {
       }
     },
   );
+
+  it.each(['pause', 'end'] as const)(
+    'Review Focus 5: %s while he pleads and trails the cursor stops both: idle, roaming, and no more cursor reads',
+    async (how) => {
+      const { dog, seen } = realDog();
+      try {
+        ok(c.start(req())); // no window to run round, so the escalation is pleas, follows and whines
+        until(() => dog.behaviour === 'follow', 30 * MIN);
+        vi.advanceTimersByTime(100);
+        expect(seen.cursorReads).toBeGreaterThan(0);
+        expect(['pleading', 'follow-cursor']).toContain(seen.frame?.mood);
+
+        if (how === 'pause') ok(c.control({ action: 'pause' })); // what Leave it does
+        else ok(await c.end());
+        expect(dog.behaviour).toBe('roam');
+        expect(seen.frame?.mood).toBe('idle');
+
+        const reads = seen.cursorReads;
+        vi.advanceTimersByTime(10 * MIN);
+        expect(seen.cursorReads).toBe(reads);
+        expect(dog.behaviour).toBe('roam');
+      } finally {
+        dog.dispose();
+      }
+    },
+  );
+
+  it('an effect the dog cannot start leaves no zoomies behind once the engine has ended it', () => {
+    const { dog, seen } = realDog();
+    const performed: string[] = [];
+    make({
+      presentation: {
+        dog: {
+          perform: (a) => {
+            performed.push(a.type);
+            dog.perform(a);
+          },
+          setMood: dog.setMood,
+          sulkAfter: dog.sulkAfter,
+          setStay: dog.setStay,
+          wake: dog.wake,
+        },
+      },
+    });
+    try {
+      dog.setWorld([], [DISPLAY]); // the engine's window is not one he can reach
+      ok(c.start(req()));
+      c.setActiveWindow(WINDOW.id);
+      until(() => performed.includes('RUN_LAPS'), 10 * MIN);
+      vi.advanceTimersByTime(100); // his loss report, and the engine's END_EFFECT for it
+      expect(performed.at(-1)).toBe('END_EFFECT');
+      expect(dog.behaviour).toBe('roam');
+      expect(seen.frame?.mood).toBe('idle');
+    } finally {
+      dog.dispose();
+    }
+  });
 
   it('he stays curled up while the user is still away or Zoom is still in front', () => {
     const { dog } = realDog();

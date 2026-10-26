@@ -706,6 +706,36 @@ describe('dog host behaviours', () => {
     host.dispose();
   });
 
+  it('an effect he cannot start leaves no zoomies or dig mood behind, whichever comes first', () => {
+    const { host, last, advance, lost } = behaviourHost();
+    host.setWorld([T], [D1]);
+    // The engine routes its action, then its expression: the mood lands after the refusal.
+    host.perform({ type: 'RUN_LAPS', windowId: 99 });
+    host.setMood('zoomies');
+    advance(TICK_MS);
+    expect(lost()).toBe(1);
+    host.perform({ type: 'END_EFFECT' }); // the engine's answer to the loss report
+    expect(last(1)?.mood).toBe('idle');
+    host.setMood('dig');
+    host.perform({ type: 'START_DIG_IN', windowId: 99 });
+    expect(last(1)?.mood).toBe('idle');
+    host.setMood('whine'); // a mood that is not an effect's is left alone
+    host.perform({ type: 'END_EFFECT' });
+    expect(last(1)?.mood).toBe('whine');
+    host.dispose();
+  });
+
+  it('lifting a Stay drops the sit mood that came with it', () => {
+    const { host, last } = behaviourHost();
+    host.setWorld([T], [D1]);
+    host.setStay(true);
+    host.setMood('sit'); // the engine's sit-stay expression
+    host.setStay(false);
+    expect(host.behaviour).toBe('roam');
+    expect(last(1)?.mood).toBe('idle');
+    host.dispose();
+  });
+
   it('setStay(true) sits him until setStay(false)', () => {
     const { host, last, advance, lost } = behaviourHost();
     host.setWorld([T], [D1]);

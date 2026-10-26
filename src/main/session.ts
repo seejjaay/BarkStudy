@@ -292,6 +292,15 @@ export function createSessionController(opts: SessionControllerOptions): Session
     publish();
   }
 
+  /**
+   * Leave it or the session's end: the engine sends no expression for either, so whatever he last felt (pleading and
+   * trailing the cursor, a whine) would last for good. He drops it, gets up from any curl, and goes back to roaming.
+   */
+  function calmDog(): void {
+    show.dog?.setMood('idle');
+    show.dog?.wake();
+  }
+
   /** Away or suppressed: the engine curls him up then, and says nothing when it is over. */
   function curledUpTime(): boolean {
     const s = host.status();
@@ -343,7 +352,7 @@ export function createSessionController(opts: SessionControllerOptions): Session
       // after the history write below.
       forgetEffect();
       syncStay();
-      show.dog?.wake();
+      calmDog();
       card = null;
       active = null;
       const endedView = (saved: boolean): Extract<SessionView, { phase: 'ended' }> => ({
@@ -379,6 +388,7 @@ export function createSessionController(opts: SessionControllerOptions): Session
       switch (a.action) {
         case 'pause':
           host.dispatch({ type: 'PAUSE' });
+          calmDog();
           break;
         case 'resume':
           host.dispatch({ type: 'RESUME' });
