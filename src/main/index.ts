@@ -35,6 +35,11 @@ const e2e = process.env['BARKSTUDY_E2E'] === '1' && !app.isPackaged;
 // Tests must never touch the real decks and history.
 if (e2e) app.setPath('userData', process.env['BARKSTUDY_USER_DATA'] ?? join(tmpdir(), `barkstudy-e2e-${process.pid}`));
 
+// The engine picks between intents at random (laps or a whine at level 3); an e2e test pins the seed so the ladder it
+// watches is always the same one.
+const e2eSeed = e2e ? Number.parseInt(process.env['BARKSTUDY_SEED'] ?? '', 10) : Number.NaN;
+const seed = (): number => (Number.isSafeInteger(e2eSeed) ? e2eSeed : Date.now() % 2 ** 31);
+
 const toInfo = (d: Display): DisplayInfo => ({ id: d.id, bounds: d.bounds, workArea: d.workArea, scaleFactor: d.scaleFactor });
 
 // A second launch brings the first one's control window forward instead of starting another dog.
@@ -94,7 +99,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
 
   const studySession = createSessionController({
     library,
-    seed: Date.now() % 2 ** 31,
+    seed: seed(),
     publish: (view) => {
       controlWindow.send({ type: 'session', view });
       appTray.refresh();
@@ -168,7 +173,8 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
     emit: (on) => studySession.dispatch({ type: 'SUPPRESS_CHANGED', on }),
   });
   const idle = createIdleMonitor({
-    idleSeconds: () => powerMonitor.getSystemIdleTime(),
+    // Under e2e the user always counts as present, so a test never starts 'away' because the machine sat idle.
+    idleSeconds: () => (e2e ? 0 : powerMonitor.getSystemIdleTime()),
     tuning: DEFAULT_TUNING,
     onActivity: (state) => studySession.dispatch({ type: 'USER_ACTIVITY', state }),
     onBusy: (busy) => studySession.setBusy(busy),

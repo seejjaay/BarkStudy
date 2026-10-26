@@ -1,6 +1,6 @@
 // Manual OS-level check of the desktop behaviour (Windows only): the flashcard bubble (click-through, pointer capture, keyboard
-// focus in and out, Esc, Ctrl+Alt+A) and the Leave it hotkey (Ctrl+Alt+L). It drives your REAL mouse and keyboard for about
-// 20 seconds, so run it on an idle desktop after `npm run build`:  node scripts/os-check.cjs
+// focus in and out, Esc, Ctrl+Alt+A), the Leave it hotkey (Ctrl+Alt+L) and the dynamic Esc held during laps. It drives your
+// REAL mouse and keyboard for about 40 seconds, so run it on an idle desktop after `npm run build`:  node scripts/os-check.cjs
 // Prints PASS/FAIL per check and exits non-zero if any failed.
 // Drives the REAL mouse and keyboard, so it only sends input when the OS confirms our overlay is where it should be.
 const fs = require('node:fs');
@@ -67,21 +67,31 @@ async function click() {
   mouse_event(0x0004, 0, 0, 0, 0);
 }
 
-(async () => {
-  const startCursor = (() => {
-    const p = {};
-    GetCursorPos(p);
-    return p;
-  })();
+/** Launches the app on a fresh data dir and waits for the control page. `extraEnv` adds e.g. fast tuning. */
+async function launchApp(extraEnv = {}) {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'barkstudy-os-check-'));
-  const env = { ...process.env, BARKSTUDY_E2E: '1', BARKSTUDY_USER_DATA: userData };
+  const env = { ...process.env, BARKSTUDY_E2E: '1', BARKSTUDY_USER_DATA: userData, ...extraEnv };
   delete env.ELECTRON_RUN_AS_NODE;
-  let app = null;
+  const app = await electron.launch({ args: ['.'], cwd: ROOT, env });
+  const control = await until(() => app.windows().find((w) => w.url().includes('control')), 20000);
+  if (!control) throw new Error('control window never appeared');
+  await control.getByRole('heading', { level: 1 }).waitFor();
+  return { app, control, userData };
+}
+
+async function closeApp(launched) {
+  if (launched) {
+    await launched.app.close().catch(() => undefined);
+    fs.rmSync(launched.userData, { recursive: true, force: true });
+  }
+}
+
+// The flashcard bubble and Leave it, with the normal timings.
+async function bubbleChecks() {
+  let launched = null;
   try {
-    app = await electron.launch({ args: ['.'], cwd: ROOT, env });
-    const control = await until(() => app.windows().find((w) => w.url().includes('control')), 20000);
-    if (!control) throw new Error('control window never appeared');
-    await control.getByRole('heading', { level: 1 }).waitFor();
+    launched = await launchApp();
+    const { app, control } = launched;
 
     // A deck and a session, through the app's own API.
     await control.evaluate(async () => {
@@ -234,12 +244,97 @@ async function click() {
       check('pressing it again resumes', !!resumed);
     }
   } catch (e) {
-    check('script ran to the end', false, String(e && e.stack ? e.stack.split('\n')[0] : e));
+    check('the bubble and Leave it checks ran to the end', false, String(e && e.stack ? e.stack.split('\n')[0] : e));
+  } finally {
+    await closeApp(launched);
+  }
+}
+
+// The dynamic Esc: with no effect, Esc belongs to whatever app has the keyboard; during an effect it is ours, and it ends
+// the effect without the app ever seeing the key; afterwards it is that app's again. Fast tuning and a pinned seed make
+// an ignored card reach laps in about 3 s; cap 3 stops the ladder there, so no dig-in follows.
+async function escChecks() {
+  let launched = null;
+  try {
+    launched = await launchApp({ BARKSTUDY_FAST_TUNING: '1', BARKSTUDY_SEED: '14' });
+    const { app, control } = launched;
+    const dbg = (name, ...args) => app.evaluate((_e, p) => globalThis.__barkDebug[p.name](...p.args), { name, args });
+    await dbg('updateSettings', { soundOn: false, cap: 3 });
+    await control.evaluate(async () => {
+      await window.barkControl.call('deck:import-text', { deckId: null, name: 'Capitals', text: 'France,Paris\nPeru,Lima' });
+    });
+
+    // A plain window that counts the Esc presses it gets. The control window is hidden so it cannot cover it.
+    const target = await app.evaluate(({ BrowserWindow, screen }) => {
+      for (const w of BrowserWindow.getAllWindows()) if (w.webContents.getURL().includes('control')) w.hide();
+      const win = new BrowserWindow({ x: 360, y: 260, width: 640, height: 420, show: false, title: 'Esc target' });
+      const page = "<body style='background:%234fc3f7'>Esc target<script>window.count=0;addEventListener('keydown',e=>{if(e.key==='Escape')window.count++})</script></body>";
+      void win.loadURL('data:text/html,' + page);
+      win.show();
+      win.focus();
+      globalThis.__escWin = win;
+      const r = screen.dipToScreenRect(null, win.getContentBounds());
+      return { hwnd: Number(win.getNativeWindowHandle().readBigUInt64LE(0)), x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    const targetHwnd = BigInt(target.hwnd);
+    const count = () => app.evaluate(() => globalThis.__escWin.webContents.executeJavaScript('window.count'));
+    if (!(await until(() => fg() === targetHwnd, 1500))) {
+      // Windows may refuse a programmatic focus; a real click in the window is always allowed.
+      await moveTo(target.x, target.y);
+      if (rootAt(target.x, target.y) === targetHwnd) await click();
+    }
+    const focused = await until(() => fg() === targetHwnd);
+    check('the Esc test window has the keyboard', !!focused, `foreground ${hex(fg())}, window ${hex(targetHwnd)}`);
+    if (!focused) return;
+    await until(async () => (await count()) === 0); // the page has loaded
+
+    // 1. No effect: Esc is not ours.
+    check('with no effect, Esc is not held', (await dbg('escapeHeld')) === false);
+    await tap(0x1b);
+    check('with no effect, Esc reaches the focused window', !!(await until(async () => (await count()) === 1)), `count ${await count()}`);
+
+    // 2. Laps: Esc is ours, ends the effect, and the window never sees it.
+    await control.evaluate(async () => {
+      const snap = await window.barkControl.call('app:snapshot', undefined);
+      await window.barkControl.call('session:start', { deckId: snap.decks[0].id, topic: '', checkinMinMinutes: 5, checkinMaxMinutes: 15 });
+    });
+    await dbg('checkin');
+    const lastEffect = async () => ((await dbg('moodLog')).at(-1) || {}).effect || null;
+    const laps = await until(async () => (await dbg('escapeHeld')) === true && (await lastEffect()) === 'laps', 15000, 100);
+    check('an ignored card reaches laps and Esc is held', !!laps);
+    if (laps) {
+      check('the test window still has the keyboard during laps', fg() === targetHwnd, `foreground ${hex(fg())}`);
+      const before = await count();
+      await tap(0x1b);
+      const ended = await until(async () => (await dbg('escapeHeld')) === false && (await lastEffect()) === null);
+      check('Esc during laps ends the effect and lets go of Esc', !!ended);
+      await sleep(300);
+      check('and the focused window did not see that Esc', (await count()) === before, `count ${await count()}, was ${before}`);
+
+      // 3. After the effect, Esc is the window's again.
+      const after = await count();
+      await tap(0x1b);
+      check('after the effect, Esc reaches the focused window again', !!(await until(async () => (await count()) === after + 1)), `count ${await count()}`);
+    }
+  } catch (e) {
+    check('the Esc checks ran to the end', false, String(e && e.stack ? e.stack.split('\n')[0] : e));
+  } finally {
+    await closeApp(launched);
+  }
+}
+
+(async () => {
+  const startCursor = (() => {
+    const p = {};
+    GetCursorPos(p);
+    return p;
+  })();
+  try {
+    await bubbleChecks();
+    await escChecks();
   } finally {
     for (const vk of [0x11, 0x12, 0x10, 0x1b]) key(vk, false); // never leave a key held
     SetCursorPos(startCursor.x, startCursor.y);
-    if (app) await app.close().catch(() => undefined);
-    fs.rmSync(userData, { recursive: true, force: true });
     const failed = results.filter((r) => !r.ok);
     console.log(`\n${results.length - failed.length}/${results.length} passed`);
     process.exit(failed.length ? 1 : 0);
