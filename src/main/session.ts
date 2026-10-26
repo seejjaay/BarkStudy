@@ -32,7 +32,7 @@ const STAY_MINUTES: readonly number[] = [15, 25, 50];
 
 /** Where the engine's actions are played out. Any part may be left out; tests leave out what they do not watch. */
 export interface SessionPresentation {
-  dog?: { perform(a: DogAction): void; setMood(name: string): void; sulkAfter(): void; setStay(on: boolean): void };
+  dog?: { perform(a: DogAction): void; setMood(name: string): void; sulkAfter(): void; setStay(on: boolean): void; wake(): void };
   escape?: { effectStarted(maxMs: number): void; effectEnded(): void };
   speech?: (line: SpeechLine) => void;
   sound?: (name: SoundName, volume: number) => void;
@@ -292,8 +292,17 @@ export function createSessionController(opts: SessionControllerOptions): Session
     publish();
   }
 
+  /** Away or suppressed: the engine curls him up then, and says nothing when it is over. */
+  function curledUpTime(): boolean {
+    const s = host.status();
+    return s.activity !== 'active' || s.suppressed;
+  }
+
   function dispatch(e: ExternalEvent): void {
+    const wasCurled = host.running && curledUpTime();
     host.dispatch(e);
+    // The user is back and nothing holds him back: he gets up. After the engine's own reaction, so a greeting keeps its mood.
+    if (wasCurled && host.running && !curledUpTime()) show.dog?.wake();
     publish();
   }
 
@@ -334,6 +343,7 @@ export function createSessionController(opts: SessionControllerOptions): Session
       // after the history write below.
       forgetEffect();
       syncStay();
+      show.dog?.wake();
       card = null;
       active = null;
       const endedView = (saved: boolean): Extract<SessionView, { phase: 'ended' }> => ({

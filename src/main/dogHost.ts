@@ -76,6 +76,8 @@ export interface DogHost {
   sulkAfter: () => void;
   /** A Stay: he ends any effect and sits where he is until it is lifted. */
   setStay: (on: boolean) => void;
+  /** The user is back (or the app that held him back is gone, or the session is over): he gets up from a curl. Nothing else changes. */
+  wake: () => void;
   readonly behaviour: DogBehaviour;
   readonly mode: 'tracking' | 'edge-roaming';
   body: () => DogBody;
@@ -596,6 +598,11 @@ export function createDogHost(opts: DogHostOptions): DogHost {
         } else if (behaviour === 'sit-stay') {
           become(resting());
         }
+      });
+    },
+    wake() {
+      input(() => {
+        if (behaviour === 'curl') become(resting());
       });
     },
     get behaviour() {

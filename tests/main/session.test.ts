@@ -405,6 +405,7 @@ function recordPresentation() {
       setMood: (name) => note(`mood:${name}`),
       sulkAfter: () => note('sulkAfter'),
       setStay: (on) => note(`stay:${on ? 'on' : 'off'}`),
+      wake: () => note('wake'),
     },
     escape: {
       effectStarted: (maxMs) => note(`escape:held:${maxMs}`),
@@ -461,6 +462,24 @@ describe('what the session drives outward', () => {
   const cardUp = () => c.view().phase === 'running' && running(c.view()).card !== null;
   const moods = () => rec.whats().filter((w) => w.startsWith('mood:'));
   const stays = () => rec.whats().filter((w) => w.startsWith('stay:'));
+
+  /** A real dog behind the session (on a known window, not roaming), his last frame, and how often he has read the cursor. */
+  function realDog() {
+    const seen: { frame: DogFrame | null; cursorReads: number } = { frame: null, cursorReads: 0 };
+    const dog: DogHost = createDogHost({
+      seed: 5,
+      sink: { send: (_id, f) => void (f && (seen.frame = f)) },
+      cursor: () => {
+        seen.cursorReads++;
+        return { x: 0, y: 0 };
+      },
+      onEffectLost: () => c.effectLost(),
+    });
+    dog.setRoaming(false);
+    dog.setWorld([WINDOW], [DISPLAY]);
+    make({ presentation: { dog, speech: rec.presentation.speech, sound: rec.presentation.sound } });
+    return { dog, seen };
+  }
 
   beforeEach(() => {
     rec = recordPresentation();
@@ -658,6 +677,49 @@ describe('what the session drives outward', () => {
       }
     },
   );
+
+  it.each(['comes back', 'closes the app that suppressed him', 'ends the session'] as const)(
+    'away, then back: he curls up while the user is gone, and gets up to roam when the user %s',
+    async (how) => {
+      const { dog, seen } = realDog();
+      try {
+        ok(c.start(req()));
+        if (how === 'closes the app that suppressed him') {
+          // A card goes unanswered while Zoom is in front: its timeout curls him up instead of escalating.
+          until(cardUp, 2 * MIN);
+          c.dispatch({ type: 'SUPPRESS_CHANGED', on: true });
+          until(() => dog.behaviour === 'curl', 5 * MIN);
+        } else {
+          c.dispatch({ type: 'USER_ACTIVITY', state: 'away' });
+        }
+        expect(dog.behaviour).toBe('curl');
+        expect(seen.frame?.pose).toBe('curl');
+
+        if (how === 'comes back') c.dispatch({ type: 'USER_ACTIVITY', state: 'active' });
+        else if (how === 'closes the app that suppressed him') c.dispatch({ type: 'SUPPRESS_CHANGED', on: false });
+        else ok(await c.end());
+        expect(dog.behaviour).toBe('roam');
+        expect(seen.frame?.pose).not.toBe('curl');
+      } finally {
+        dog.dispose();
+      }
+    },
+  );
+
+  it('he stays curled up while the user is still away or Zoom is still in front', () => {
+    const { dog } = realDog();
+    try {
+      ok(c.start(req()));
+      c.dispatch({ type: 'USER_ACTIVITY', state: 'away' });
+      c.dispatch({ type: 'SUPPRESS_CHANGED', on: true });
+      c.dispatch({ type: 'USER_ACTIVITY', state: 'active' }); // back, but Zoom is in front
+      expect(dog.behaviour).toBe('curl');
+      c.dispatch({ type: 'SUPPRESS_CHANGED', on: false });
+      expect(dog.behaviour).toBe('roam');
+    } finally {
+      dog.dispose();
+    }
+  });
 
   it('fastTuning shrinks check-in, escalation and guilt timings 100× and leaves effect durations', () => {
     make({ fastTuning: true });

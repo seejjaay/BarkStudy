@@ -688,6 +688,24 @@ describe('dog host behaviours', () => {
     host.dispose();
   });
 
+  it('wake() gets him up from a curl to roam, and changes nothing when he is not curled up', () => {
+    const { host, last, advance } = behaviourHost();
+    host.setWorld([T], [D1]);
+    host.perform({ type: 'CURL_UP' });
+    advance(1000);
+    host.wake();
+    expect(host.behaviour).toBe('roam');
+    expect(last(1)?.pose).not.toBe('curl');
+    host.setStay(true);
+    host.wake(); // a Stay is lifted only by setStay(false)
+    expect(host.behaviour).toBe('sit-stay');
+    host.setStay(false);
+    host.perform({ type: 'RUN_LAPS', windowId: 7 });
+    host.wake(); // nor does it cut an effect short
+    expect(host.behaviour).toBe('laps');
+    host.dispose();
+  });
+
   it('setStay(true) sits him until setStay(false)', () => {
     const { host, last, advance, lost } = behaviourHost();
     host.setWorld([T], [D1]);
