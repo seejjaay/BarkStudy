@@ -28,7 +28,11 @@ export type DogPose = 'walk' | 'sit' | 'fall' | 'run' | 'hop' | 'dig' | 'curl';
 /** Which edge of the target window he is on during laps. */
 export type LapSide = 'top' | 'right' | 'bottom' | 'left';
 
-/** A running effect (laps round a window, or digging in). `rect` is the target window's live rect, in the same coordinate space as the frame. */
+/**
+ * A running effect (laps round a window, or digging in), in the same coordinate space as the frame. `rect` is the target
+ * window's live rect; for laps it is the loop he runs round it, which is pulled inside the frame on a side that meets the
+ * screen edge (see lapRect).
+ */
 export interface EffectState {
   kind: 'laps' | 'dig';
   seed: number;

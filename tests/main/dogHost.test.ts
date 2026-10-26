@@ -533,6 +533,35 @@ describe('dog host behaviours', () => {
     host.dispose();
   });
 
+  // Regression (M4 capture at 125%): round a maximised window his feet ran along the screen edges, so on the top, the
+  // right and the left his body was drawn off-screen. Sides with no room outside are run just inside the frame instead.
+  it('laps round a maximised window keep him on screen, and the prints follow the same loop', () => {
+    const { host, last, advance } = behaviourHost();
+    const maxed = win(7, 0, 0, { bounds: D1.workArea, isForeground: true });
+    host.setWorld([maxed], [D1]);
+    host.perform({ type: 'RUN_LAPS', windowId: 7 });
+    expect(host.behaviour).toBe('laps');
+    const loop = { x: DOG.height, y: DOG.height, width: D1.workArea.width - 2 * DOG.height, height: D1.workArea.height - 2 * DOG.height };
+    const wa = D1.workArea;
+    const sides = new Set<string>();
+    for (let t = 0; t < DEFAULT_TUNING.lapsMaxMs; t += 100) {
+      advance(100);
+      const f = last(1);
+      if (!f?.effect) break;
+      expect(f.effect.rect).toEqual(loop);
+      const b = host.body();
+      expect(distToPerimeter(loop, b)).toBeLessThanOrEqual(1);
+      // His sprite (DOG.height out from his feet, DOG.width along the edge) stays inside the work area.
+      expect(b.x - DOG.height).toBeGreaterThanOrEqual(wa.x - 1);
+      expect(b.x + DOG.height).toBeLessThanOrEqual(wa.x + wa.width + 1);
+      expect(b.y - DOG.height).toBeGreaterThanOrEqual(wa.y - 1);
+      expect(b.y + DOG.height).toBeLessThanOrEqual(wa.y + wa.height + 1);
+      if (f.side) sides.add(f.side);
+    }
+    expect(sides.size).toBeGreaterThanOrEqual(2); // it was checked on more than one side
+    host.dispose();
+  });
+
   it('Review Focus #2: dragging the target during dig-in keeps him on its title bar centre', () => {
     const { host, last, advance } = behaviourHost();
     host.setWorld([T], [D1]);

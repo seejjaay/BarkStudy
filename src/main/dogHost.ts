@@ -1,7 +1,7 @@
 import { createRng, nextInt, type RngState } from '../engine/rng';
 import { DEFAULT_TUNING } from '../engine/tuning';
 import type { Action } from '../engine/types';
-import { digSpot, followDirection, HOP_MS, hopPoint, LAP_SPEED, lapPoint, type Point } from '../shared/behaviour';
+import { digSpot, followDirection, HOP_MS, hopPoint, LAP_SPEED, lapPoint, lapRect, type Point } from '../shared/behaviour';
 import {
   clipSprite,
   hiddenDisplayIds,
@@ -235,6 +235,17 @@ export function createDogHost(opts: DogHostOptions): DogHost {
     return on.length > 0 && !on.some((d) => hidden.has(d.id)) ? w : null;
   }
 
+  /** The loop he runs round this window, kept inside the work areas of the displays it is on (see lapRect). */
+  function lapLoop(rect: Rect): Rect {
+    const areas = displays.filter((d) => intersects(rect, d.bounds)).map((d) => d.workArea);
+    if (areas.length === 0) return rect;
+    const x1 = Math.min(...areas.map((a) => a.x));
+    const y1 = Math.min(...areas.map((a) => a.y));
+    const x2 = Math.max(...areas.map((a) => a.x + a.width));
+    const y2 = Math.max(...areas.map((a) => a.y + a.height));
+    return lapRect(rect, { x: x1, y: y1, width: x2 - x1, height: y2 - y1 }, DOG.height);
+  }
+
   function lapDistance(e: Effect): number {
     return reducedMotion ? e.lap.from : e.lap.from + LAP_SPEED * (e.elapsed - e.lap.at);
   }
@@ -243,7 +254,7 @@ export function createDogHost(opts: DogHostOptions): DogHost {
   function placeForEffect(e: Effect, rect: Rect): void {
     const facing = body?.facing ?? 1;
     if (e.kind === 'laps') {
-      const p = lapPoint(rect, lapDistance(e));
+      const p = lapPoint(lapLoop(rect), lapDistance(e));
       body = { x: p.x, y: p.y, vy: 0, facing: p.facing, anchor: null };
       side = p.side;
       return;
@@ -276,7 +287,8 @@ export function createDogHost(opts: DogHostOptions): DogHost {
       const [seed, nextRng] = nextInt(rng, 0, 2 ** 31);
       rng = nextRng;
       // Laps start on the top edge above him, or at its nearer top corner.
-      const from = clamp(body.x - target.bounds.x, 0, target.bounds.width);
+      const loop = lapLoop(target.bounds);
+      const from = clamp(body.x - loop.x, 0, loop.width);
       effect = { kind, windowId, seed, elapsed: 0, limit, lap: { from, at: 0 } };
     }
     // The engine moved on to this effect, so a loss report for an earlier one is stale: it would end this one at once.
@@ -415,7 +427,8 @@ export function createDogHost(opts: DogHostOptions): DogHost {
     };
     if (side) frame.side = side;
     const target = e ? windows.find((w) => w.id === e.windowId) : undefined;
-    if (e && target) frame.effect = { kind: e.kind, seed: e.seed, elapsedMs: e.elapsed, rect: toDisplay(target.bounds) };
+    // For laps the renderer lays his prints along the same loop his feet follow.
+    if (e && target) frame.effect = { kind: e.kind, seed: e.seed, elapsedMs: e.elapsed, rect: toDisplay(e.kind === 'laps' ? lapLoop(target.bounds) : target.bounds) };
     return frame;
   }
 

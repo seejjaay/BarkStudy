@@ -33,6 +33,19 @@ export function lapPoint(rect: Rect, distance: number): { x: number; y: number; 
   return { x, y: y + h - (d - 2 * w - h), side: 'left', facing: -1 };
 }
 
+/**
+ * The loop he runs round a window: its frame, except that a side with less than `room` px between it and the edge of
+ * `area` (a maximised or snapped window, or one pushed against the screen edge) is pulled in by that much, so he runs just
+ * inside the frame there instead of off-screen. `room` is how far his body sticks out past his feet (his height).
+ */
+export function lapRect(rect: Rect, area: Rect, room: number): Rect {
+  const x1 = Math.max(rect.x, area.x + room);
+  const y1 = Math.max(rect.y, area.y + room);
+  const x2 = Math.min(rect.x + rect.width, area.x + area.width - room);
+  const y2 = Math.min(rect.y + rect.height, area.y + area.height - room);
+  return { x: x1, y: y1, width: Math.max(0, x2 - x1), height: Math.max(0, y2 - y1) };
+}
+
 /** Where he sits to dig in: the centre of the window's top edge. */
 export function digSpot(rect: Rect): { x: number; y: number } {
   return { x: rect.x + rect.width / 2, y: rect.y };

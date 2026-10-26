@@ -9,6 +9,7 @@ import {
   LAP_SPEED,
   lapPerimeter,
   lapPoint,
+  lapRect,
   type Point,
 } from '../../src/shared/behaviour';
 import type { Rect } from '../../src/shared/geometry';
@@ -104,6 +105,49 @@ describe('lapPoint', () => {
   it('stays finite on a degenerate rect', () => {
     const p = lapPoint({ x: 10, y: 20, width: 0, height: 0 }, 50);
     expect(p).toMatchObject({ x: 10, y: 20, side: 'top', facing: 1 });
+  });
+});
+
+describe('lapRect', () => {
+  const AREA: Rect = { x: 0, y: 0, width: 1536, height: 816 };
+  const ROOM = 48;
+
+  it('is the window itself when there is room for him outside every side', () => {
+    expect(lapRect(R, AREA, ROOM)).toEqual(R);
+  });
+
+  // Regression: laps round a maximised window ran along the screen edges with his body off-screen (seen in the M4 capture).
+  it('pulls every side of a maximised window in, so he runs just inside its frame and stays on screen', () => {
+    const loop = lapRect(AREA, AREA, ROOM);
+    expect(loop).toEqual({ x: ROOM, y: ROOM, width: AREA.width - 2 * ROOM, height: AREA.height - 2 * ROOM });
+    // His body sticks out ROOM past his feet on each side: up on the top, right on the right, and so on.
+    const per = lapPerimeter(loop);
+    for (let i = 0; i < 400; i++) {
+      const p = lapPoint(loop, (i / 400) * per);
+      const out = { top: [0, -ROOM], right: [ROOM, 0], bottom: [0, ROOM], left: [-ROOM, 0] }[p.side];
+      const [ox = 0, oy = 0] = out;
+      expect(p.x + ox).toBeGreaterThanOrEqual(AREA.x);
+      expect(p.x + ox).toBeLessThanOrEqual(AREA.x + AREA.width);
+      expect(p.y + oy).toBeGreaterThanOrEqual(AREA.y);
+      expect(p.y + oy).toBeLessThanOrEqual(AREA.y + AREA.height);
+    }
+  });
+
+  it('moves only the sides that lack room: a window pushed against the right edge', () => {
+    const w: Rect = { x: 1000, y: 200, width: 536, height: 300 };
+    expect(lapRect(w, AREA, ROOM)).toEqual({ x: 1000, y: 200, width: 536 - ROOM, height: 300 });
+  });
+
+  it('works for a work area that does not start at 0 (a second display, a top taskbar)', () => {
+    const area: Rect = { x: 1536, y: 40, width: 1280, height: 680 };
+    expect(lapRect(area, area, ROOM)).toEqual({ x: 1536 + ROOM, y: 40 + ROOM, width: 1280 - 2 * ROOM, height: 680 - 2 * ROOM });
+  });
+
+  it('never gives a negative size for a window too small to pull in', () => {
+    const tiny: Rect = { x: 0, y: 0, width: 60, height: 60 };
+    const loop = lapRect(tiny, AREA, ROOM);
+    expect(loop.width).toBeGreaterThanOrEqual(0);
+    expect(loop.height).toBeGreaterThanOrEqual(0);
   });
 });
 
