@@ -23,7 +23,12 @@ export type ErrorCode =
   | 'invalid-card'
   | 'deck-in-use'
   | 'file-unreadable'
-  | 'file-too-large';
+  | 'file-too-large'
+  | 'not-a-backup'
+  | 'newer-version'
+  | 'hotkey-taken'
+  | 'hotkey-invalid'
+  | 'session-running';
 
 export interface AppError {
   code: ErrorCode;

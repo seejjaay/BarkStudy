@@ -66,6 +66,8 @@ export interface Storage {
   read: <T>(def: StoreDef<T>) => Promise<ReadResult<T>>;
   /** Throws if `data` does not validate or the file cannot be written; the previous file is then untouched. */
   write: <T>(def: StoreDef<T>, data: T) => Promise<void>;
+  /** Copies the store's current file into backups/ (oldest beyond the keep limit are dropped) and leaves it in place. Nothing to copy is not an error. */
+  backup: <T>(def: StoreDef<T>) => Promise<void>;
 }
 
 export interface StorageOptions {
@@ -96,6 +98,29 @@ function parseEnvelope(text: string): Envelope | null {
   }
   if (!isRecord(v) || !Number.isInteger(v['schemaVersion']) || (v['schemaVersion'] as number) < 1 || !('data' in v)) return null;
   return { schemaVersion: v['schemaVersion'] as number, data: v['data'] };
+}
+
+function migrate<T>(def: StoreDef<T>, env: Envelope): { ok: true; value: T } | { ok: false; detail: string } {
+  let data = env.data;
+  for (let v = env.schemaVersion; v <= def.migrations.length; v++) {
+    try {
+      data = def.migrations[v - 1]!(structuredClone(data));
+    } catch (e) {
+      return { ok: false, detail: `step v${v} to v${v + 1} failed: ${message(e)}` };
+    }
+  }
+  return def.validate(data) ? { ok: true, value: data } : { ok: false, detail: 'migrated data failed validation' };
+}
+
+
+/** Brings data written at `schemaVersion` up to what this app writes, for data that did not come from a store file (an imported backup). */
+export function upgrade<T>(def: StoreDef<T>, schemaVersion: number, data: unknown): { ok: true; value: T } | { ok: false; reason: 'newer-version' | 'invalid' } {
+  if (!Number.isInteger(schemaVersion) || schemaVersion < 1) return { ok: false, reason: 'invalid' };
+  const current = def.migrations.length + 1;
+  if (schemaVersion > current) return { ok: false, reason: 'newer-version' };
+  if (schemaVersion === current) return def.validate(data) ? { ok: true, value: data } : { ok: false, reason: 'invalid' };
+  const m = migrate(def, { schemaVersion, data });
+  return m.ok ? m : { ok: false, reason: 'invalid' };
 }
 
 export function createStorage(dir: string, opts: StorageOptions = {}): Storage {
@@ -170,18 +195,6 @@ export function createStorage(dir: string, opts: StorageOptions = {}): Storage {
         if (code(e) !== 'EEXIST') throw e;
       }
     }
-  }
-
-  function migrate<T>(def: StoreDef<T>, env: Envelope): { ok: true; value: T } | { ok: false; detail: string } {
-    let data = env.data;
-    for (let v = env.schemaVersion; v <= def.migrations.length; v++) {
-      try {
-        data = def.migrations[v - 1]!(structuredClone(data));
-      } catch (e) {
-        return { ok: false, detail: `step v${v} to v${v + 1} failed: ${message(e)}` };
-      }
-    }
-    return def.validate(data) ? { ok: true, value: data } : { ok: false, detail: 'migrated data failed validation' };
   }
 
   async function recover<T>(def: StoreDef<T>, reason: 'unparseable' | 'invalid-data'): Promise<ReadResult<T>> {
@@ -259,6 +272,17 @@ export function createStorage(dir: string, opts: StorageOptions = {}): Storage {
 
   return {
     read: (def) => serial(def.name, () => readUnlocked(def)),
+    backup: (def) =>
+      serial(def.name, async () => {
+        const text = await fs.readFile(fileOf(def.name)).catch((e: unknown) => {
+          if (code(e) === 'ENOENT') return null;
+          throw e;
+        });
+        if (text === null) return;
+        const version = parseEnvelope(text)?.schemaVersion ?? def.migrations.length + 1;
+        await copyToBackups(fileOf(def.name), (at) => `${def.name}.v${version}-${stamp(at)}.json`);
+        await prune(def.name, 'v');
+      }),
     write: (def, data) =>
       serial(def.name, async () => {
         if (!def.validate(data)) throw new Error(`invalid data for store "${def.name}"`);

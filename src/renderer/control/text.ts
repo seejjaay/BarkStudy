@@ -20,6 +20,11 @@ export const ERROR_TEXT: Record<ErrorCode, string> = {
   'deck-in-use': 'A session is using this deck right now. End the session first.',
   'file-unreadable': 'That file could not be read.',
   'file-too-large': 'That is too large to import.',
+  'not-a-backup': 'That is not a BarkStudy backup, or part of it is damaged. Nothing was changed.',
+  'newer-version': 'That backup was made by a newer BarkStudy. Update the app to restore it. Nothing was changed.',
+  'hotkey-taken': 'Another app is using that shortcut. Pick a different one.',
+  'hotkey-invalid': 'That shortcut cannot be used. It needs Ctrl or Alt plus a key, and the two shortcuts must differ.',
+  'session-running': 'End the session first, then try again.',
 };
 
 export const SKIP_TEXT: Record<SkipReason, string> = {
