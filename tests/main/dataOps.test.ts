@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createControlHandlers, MAX_BACKUP_CHARS, type ControlHandlers, type FileAccess } from '../../src/main/controlHandlers';
+import { createLeaveIt } from '../../src/main/leaveIt';
 import { createLibrary, type Library } from '../../src/main/library';
 import { createSessionController, type SessionController } from '../../src/main/session';
 import { createStorage } from '../../src/main/storage/io';
@@ -257,5 +258,53 @@ describe('onboarding:finish', () => {
     expect(codeOf(await call<Result<unknown>>('onboarding:finish', args))).toBe('invalid-request');
     expect(lib.getSettings().onboarded).toBe(false);
     expect(names()).toEqual([]);
+  });
+});
+
+describe('afterReplace and a taken Leave it shortcut', () => {
+  it('puts the conflict on record, so the status published afterwards says so', async () => {
+    const taken = new Set<string>();
+    const held = new Set<string>();
+    const leave = createLeaveIt({
+      session,
+      hotkeys: {
+        register: (accel) => {
+          if (taken.has(accel) || held.has(accel)) return false;
+          held.add(accel);
+          return true;
+        },
+        unregister: (accel) => void held.delete(accel),
+      },
+      notify: () => undefined,
+      onConflictChange: () => undefined,
+    });
+    leave.register('Ctrl+Alt+K'); // what the user had bound before the reset
+    taken.add('Ctrl+Alt+L'); // another app owns the saved (default) one
+    const statuses: boolean[] = [];
+    const reset = createControlHandlers({
+      library: lib,
+      session,
+      files,
+      status: () => ({ trackerDown: false, leaveItConflict: leave.conflict, leaveItLabel: leave.accelerator ?? '' }),
+      platform: {
+        loginItem: { get: () => ({ available: false, on: false }), set: () => undefined },
+        openApps: () => [],
+        dataDir: 'C:/data',
+        openLink: () => undefined,
+        applyReducedMotion: () => undefined,
+        version: '1.2.3',
+        openPath: () => Promise.resolve(''),
+        afterReplace: () => {
+          leave.restore(lib.getSettings().leaveItHotkey);
+          statuses.push(leave.conflict);
+        },
+        setPractice: () => undefined,
+      },
+      hotkeys: { leaveIt: { rebind: () => true }, bubble: { rebind: () => true } },
+    });
+    ok((await reset.handle('data:reset', undefined)) as Result<void>);
+    expect(statuses).toEqual([true]);
+    expect(leave.conflict).toBe(true);
+    expect([...held]).toEqual(['Ctrl+Alt+K']); // the working shortcut is kept
   });
 });

@@ -19,6 +19,8 @@ export interface BubbleHostDeps {
   hotkeys: { register: (accelerator: string, onPress: () => void) => boolean; unregister: (accelerator: string) => void };
   /** The shortcut to hold while a question is waiting, read each time so a rebinding in settings takes effect. */
   accelerator: () => string;
+  /** Where a taken shortcut is reported; the console if absent. */
+  log?: { warn: (area: string, message: string) => void };
 }
 
 export interface BubbleHost {
@@ -49,7 +51,11 @@ export function createBubbleHost(deps: BubbleHostDeps): BubbleHost {
       const accelerator = deps.accelerator();
       held = hotkeys.register(accelerator, onHotkey) ? accelerator : null;
       conflict = held === null;
-      if (conflict) console.error(`${accelerator} is taken by another app; click Pandesal to answer instead`);
+      if (conflict) {
+        const message = `${accelerator} is taken by another app; click Pandesal to answer instead`;
+        if (deps.log) deps.log.warn('bubble', message);
+        else console.error(message);
+      }
     } else if (!wanted && held !== null) {
       hotkeys.unregister(held);
       held = null;

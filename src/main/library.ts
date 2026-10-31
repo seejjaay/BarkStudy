@@ -16,6 +16,7 @@ import { DEFAULT_SETTINGS, checkSettings, fillSettings, normalizeExcluded, repai
 import { newCard } from '../shared/srs';
 import { isSettings } from '../shared/validate';
 import type { SessionSummary } from './engineHost';
+import type { Log } from './logs';
 import { upgrade, type ReadResult, type Storage, type StoreDef } from './storage/io';
 import { decksStore, historyStore, settingsStore } from './storage/stores';
 
@@ -75,6 +76,8 @@ export interface LibraryOptions {
   storage: Storage;
   now?: () => number;
   newId?: () => string;
+  /** Where a store that cannot be read or written is reported. Only codes and error objects go here, never card text. */
+  log?: Pick<Log, 'error' | 'warn'>;
 }
 
 interface Slot<T> {
@@ -113,9 +116,11 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
         return { ...slot, value: r.value };
       case 'recovered':
         notices.push({ store, kind: 'recovered', detail: `${r.reason}; restored from ${r.source}` });
+        opts.log?.warn('library', `${store} store was damaged (${r.reason}); restored from ${r.source}`);
         return { ...slot, value: r.value };
       case 'error':
         notices.push({ store, kind: 'unavailable', detail: `${r.error}: ${r.detail}` });
+        opts.log?.error('library', `${store} store is unavailable (${r.error}); it is left untouched`); // the detail can quote file contents, so it stays out of the log
         return { ...slot, available: false };
     }
   }
@@ -131,8 +136,9 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
       notices.push({ store: 'settings', kind: 'repaired', detail: 'a setting that could not be used was put back to its default' });
       try {
         await opts.storage.write(settings.def, settings.value);
-      } catch {
+      } catch (e) {
         // The repaired values are still what the app uses; the next successful save writes them.
+        opts.log?.error('library', 'could not write back the repaired settings', e);
       }
     }
   }
@@ -147,6 +153,7 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
       try {
         await opts.storage.write(slot.def, draft);
       } catch (e) {
+        opts.log?.error('library', `${slot.def.name} store could not be written`, e);
         return fail('write-failed', messageOf(e));
       }
       slot.value = draft;
@@ -212,6 +219,7 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
         await opts.storage.backup(slot.def);
         return good(undefined);
       } catch (e) {
+        opts.log?.error('library', `${slot.def.name} store could not be backed up`, e);
         return fail('write-failed', `could not back up ${slot.def.name}: ${messageOf(e)}`);
       }
     });
@@ -222,6 +230,7 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
       try {
         await opts.storage.write(slot.def, value);
       } catch (e) {
+        opts.log?.error('library', `${slot.def.name} store could not be replaced`, e);
         return fail('write-failed', messageOf(e));
       }
       slot.value = structuredClone(value);

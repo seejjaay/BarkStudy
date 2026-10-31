@@ -23,6 +23,8 @@ export interface LeaveIt {
   register: (accelerator: string) => boolean;
   /** Moves to another accelerator. If the new one is taken the old one stays, so the user is never left with none. */
   rebind: (accelerator: string) => boolean;
+  /** For a saved choice that was just swapped in: rebinds, and if it is taken registers it anyway so the conflict is reported. */
+  restore: (accelerator: string) => boolean;
   readonly accelerator: string | null;
   readonly conflict: boolean;
   dispose: () => void;
@@ -52,28 +54,43 @@ export function createLeaveIt(deps: LeaveItDeps): LeaveIt {
     }
   }
 
-  return {
-    register(accelerator) {
-      attempted = accelerator;
-      const ok = tryRegister(accelerator);
-      if (ok) current = accelerator;
-      setConflict(!ok);
-      return ok;
-    },
+  function register(accelerator: string): boolean {
+    attempted = accelerator;
+    const ok = tryRegister(accelerator);
+    if (ok) current = accelerator;
+    setConflict(!ok);
+    return ok;
+  }
 
-    rebind(accelerator) {
-      if (accelerator === current) return true;
-      attempted = accelerator;
-      if (!tryRegister(accelerator)) {
-        // Keep whatever worked before; only report if there was nothing.
-        setConflict(current === null);
-        return false;
-      }
-      if (current !== null) deps.hotkeys.unregister(current);
-      current = accelerator;
-      setConflict(false);
-      return true;
-    },
+  function rebind(accelerator: string): boolean {
+    if (accelerator === current) return true;
+    attempted = accelerator;
+    if (!tryRegister(accelerator)) {
+      // Keep whatever worked before; only report if there was nothing.
+      setConflict(current === null);
+      return false;
+    }
+    if (current !== null) deps.hotkeys.unregister(current);
+    current = accelerator;
+    setConflict(false);
+    return true;
+  }
+
+  function restore(accelerator: string): boolean {
+    const before = current;
+    if (rebind(accelerator)) return true;
+    // The old one stays, but the conflict is now on record. (If the shortcut was freed in between, take it and let go of the old.)
+    const ok = register(accelerator);
+    if (ok && before !== null && before !== accelerator) deps.hotkeys.unregister(before);
+    return ok;
+  }
+
+  return {
+    register,
+
+    restore,
+
+    rebind,
 
     get accelerator() {
       return current ?? attempted;

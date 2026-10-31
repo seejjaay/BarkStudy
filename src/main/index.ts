@@ -1,6 +1,7 @@
+import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { app, globalShortcut, ipcMain, Notification, powerMonitor, screen, session, shell, systemPreferences, type Display, type WebContents } from 'electron';
+import { app, crashReporter, globalShortcut, ipcMain, Notification, powerMonitor, screen, session, shell, systemPreferences, type Display, type WebContents } from 'electron';
 import { DEFAULT_TUNING } from '../engine/tuning';
 import type { Settings } from '../shared/settings';
 import { CONTROL_CHANNEL, type AppStatus } from '../shared/control';
@@ -17,8 +18,10 @@ import { createFileAccess } from './files';
 import { createIdleMonitor } from './idle';
 import { createLeaveIt } from './leaveIt';
 import { createLibrary } from './library';
+import { createLog } from './logs';
 import { hardenWebContents, installNetworkGuard, UI_PARTITION } from './network';
 import { createOverlayManager } from './overlay';
+import { createRendererErrorGate } from './rendererErrors';
 import { createSessionController } from './session';
 import { createStorage } from './storage/io';
 import { createSuppress } from './suppress';
@@ -34,6 +37,21 @@ const e2e = process.env['BARKSTUDY_E2E'] === '1' && !app.isPackaged;
 
 // Tests must never touch the real decks and history.
 if (e2e) app.setPath('userData', process.env['BARKSTUDY_USER_DATA'] ?? join(tmpdir(), `barkstudy-e2e-${process.pid}`));
+
+// The app log and the crash dumps live together under userData/logs. Crash dumps stay on this machine: nothing is uploaded.
+const logDir = join(app.getPath('userData'), 'logs');
+const log = createLog({ dir: logDir, echo: e2e ? (entry) => console.log(entry) : undefined });
+try {
+  mkdirSync(join(logDir, 'crashes'), { recursive: true });
+  app.setPath('crashDumps', join(logDir, 'crashes'));
+  crashReporter.start({ uploadToServer: false });
+} catch (err) {
+  log.error('main', 'could not start the local crash reporter', err);
+}
+process.on('uncaughtException', (err) => log.error('main', 'uncaught exception', err));
+process.on('unhandledRejection', (reason) => log.error('main', 'unhandled rejection', reason));
+app.on('render-process-gone', (_event, _wc, details) => log.error('main', `a page's process is gone: ${details.reason} (exit code ${details.exitCode})`));
+app.on('child-process-gone', (_event, details) => log.error('main', `a ${details.type} process is gone: ${details.reason} (exit code ${details.exitCode})`));
 
 // The engine picks between intents at random (laps or a whine at level 3); an e2e test pins the seed so the ladder it
 // watches is always the same one.
@@ -51,18 +69,30 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
   installNetworkGuard(session.fromPartition(UI_PARTITION), devOrigin);
   app.on('web-contents-created', (_event, wc) => hardenWebContents(wc, devOrigin));
 
-  const library = await createLibrary({ storage: createStorage(join(app.getPath('userData'), 'data')) });
+  log.info('main', `BarkStudy ${app.getVersion()} starting`);
+  const library = await createLibrary({ storage: createStorage(join(app.getPath('userData'), 'data')), log });
 
   const controlWindow = createControlWindow({
     preload: join(__dirname, '../preload/control.cjs'),
     load: (win) => (rendererUrl ? win.loadURL(`${rendererUrl}/control/index.html`) : win.loadFile(join(__dirname, '../renderer/control/index.html'))),
+    log,
   });
   let trackerDown = false;
 
   const overlays = createOverlayManager({
     preload: join(__dirname, '../preload/overlay.cjs'),
     load: (win) => (rendererUrl ? win.loadURL(`${rendererUrl}/overlay/index.html`) : win.loadFile(join(__dirname, '../renderer/overlay/index.html'))),
+    log,
   });
+
+  // The pages report their own uncaught errors; only our two kinds of window are listened to, and each is rate-limited.
+  const rendererErrors = createRendererErrorGate({
+    log,
+    isOwn: (sender) => controlWindow.isOwn(sender as WebContents) || overlays.isOverlay(sender as WebContents),
+    now: () => Date.now(),
+  });
+  ipcMain.on(IPC.logRenderer, (event, payload: unknown) => rendererErrors.handle(event.sender, payload));
+  setInterval(() => rendererErrors.tick(), 60_000).unref();
 
   const notify = (message: string): void => {
     if (Notification.isSupported()) new Notification({ title: 'BarkStudy', body: message, silent: true }).show();
@@ -95,7 +125,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
     onEffectLost: () => studySession.effectLost(),
   });
   // Esc is held only while an effect runs; a press ends the effect and keeps the level.
-  const escapeKey = createEscapeKey({ hotkeys, onPress: () => studySession.dispatch({ type: 'ESC_PRESSED' }) });
+  const escapeKey = createEscapeKey({ hotkeys, onPress: () => studySession.dispatch({ type: 'ESC_PRESSED' }), log });
 
   const studySession = createSessionController({
     library,
@@ -152,6 +182,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
     },
     hotkeys,
     accelerator: () => library.getSettings().bubbleHotkey,
+    log,
   });
   for (const channel of [IPC.bubbleSubmit, IPC.bubbleReveal, IPC.bubbleGrade]) {
     ipcMain.handle(channel, (event, payload: unknown) => bubble.handle(channel, event.sender, payload));
@@ -197,7 +228,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       // The saved shortcuts, reduced motion and tray follow the settings that were just swapped in.
       afterReplace: () => {
         const saved = library.getSettings();
-        leaveIt.rebind(saved.leaveItHotkey);
+        leaveIt.restore(saved.leaveItHotkey);
         applyReducedMotion(saved.reducedMotion);
         publishStatus();
       },
@@ -254,7 +285,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       pushWorld();
     },
     onDown: (err) => {
-      console.error('window tracker is down; roaming the display edges', err);
+      log.error('tracker', 'window tracker is down; roaming the display edges', err);
       trackerDown = true;
       dogHost.setTrackerDown();
       publishStatus();
@@ -303,7 +334,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
         if (studySession.view().phase === 'running') await studySession.end();
         await studySession.settled();
       } catch (err) {
-        console.error('could not finish the session before quitting', err);
+        log.error('session', 'could not finish the session before quitting', err);
       }
       tracker.stop();
       idle.stop();
@@ -316,6 +347,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       overlays.dispose();
       controlWindow.dispose();
       globalShortcut.unregisterAll();
+      await log.flush();
       app.quit();
     })();
   });

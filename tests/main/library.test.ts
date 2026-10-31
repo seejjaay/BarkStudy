@@ -625,6 +625,27 @@ describe('whole-data backup', () => {
 });
 
 describe('failure and concurrency', () => {
+  const failingRename = { ...nodeFs, rename: () => Promise.reject(Object.assign(new Error('disk'), { code: 'EIO' })) };
+  const recordingLog = () => {
+    const seen: string[] = [];
+    return { seen, log: { error: (_a: string, m: string) => void seen.push(m), warn: (_a: string, m: string) => void seen.push(m) } };
+  };
+
+  it('a write that fails is logged without the deck name', async () => {
+    const { seen, log } = recordingLog();
+    const lib = await createLibrary({ storage: createStorage(dir, { now, sleep: noSleep, fs: failingRename }), now, newId, log });
+    await lib.createDeck('Secret Deck Name');
+    expect(seen).toEqual(['decks store could not be written']);
+  });
+
+  it('a repaired settings file that cannot be rewritten is logged, and the repaired values are still used', async () => {
+    fs.writeFileSync(join(dir, 'settings.json'), JSON.stringify({ schemaVersion: 1, data: { cap: 3, preset: 'drama-queen', checkinMinMinutes: 7, checkinMaxMinutes: 20, excludedApps: ['zoom.exe'], leaveItHotkey: 'L' } }));
+    const { seen, log } = recordingLog();
+    const lib = await createLibrary({ storage: createStorage(dir, { now, sleep: noSleep, fs: failingRename }), now, newId, log });
+    expect(lib.getSettings().leaveItHotkey).toBe(DEFAULT_SETTINGS.leaveItHotkey);
+    expect(seen).toEqual(['could not write back the repaired settings']);
+  });
+
   it('a write that fails reports it and leaves the library as it was', async () => {
     const lib = await open({ fs: { ...nodeFs, rename: () => Promise.reject(Object.assign(new Error('disk'), { code: 'EIO' })) } });
     expect(code(await lib.createDeck('Doomed'))).toBe('write-failed');

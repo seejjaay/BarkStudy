@@ -1,5 +1,6 @@
 import { BrowserWindow, type Display, type WebContents } from 'electron';
 import { IPC, isHitMessage, type DogFrame } from '../shared/ipc';
+import type { Log } from './logs';
 import { windowIcon } from './windowIcon';
 import { UI_PARTITION } from './network';
 
@@ -21,7 +22,7 @@ export interface OverlayManager {
   dispose: () => void;
 }
 
-export function createOverlayManager(opts: { preload: string; load: (w: BrowserWindow) => Promise<void> }): OverlayManager {
+export function createOverlayManager(opts: { preload: string; load: (w: BrowserWindow) => Promise<void>; log?: Pick<Log, 'error'> }): OverlayManager {
   const windows = new Map<number, BrowserWindow>();
   const lastFrames = new Map<number, DogFrame | null>();
 
@@ -70,7 +71,7 @@ export function createOverlayManager(opts: { preload: string; load: (w: BrowserW
       () => {
         if (!win.isDestroyed()) win.showInactive();
       },
-      (err: unknown) => console.error('overlay failed to load', err),
+      (err: unknown) => (opts.log ? opts.log.error('overlay', 'overlay failed to load', err) : console.error('overlay failed to load', err)),
     );
     return win;
   }

@@ -20,6 +20,8 @@ export const IPC = {
   speechSay: 'speech:say',
   /** main → overlays: a sound for Pandesal to make. Every overlay gets it; only the one that has him plays it. */
   soundPlay: 'sound:play',
+  /** renderer → main: an uncaught error or rejected promise in the page, for the app log. Not part of the exposed API. */
+  logRenderer: 'log:renderer',
 } as const;
 
 /** How the renderer draws the body. A renderer that does not know a pose draws `walk`. */

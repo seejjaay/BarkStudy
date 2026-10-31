@@ -279,4 +279,5 @@ export interface BarkControlApi {
   onEvent: (cb: (event: ControlEvent) => void) => void;
 }
 
-export const CONTROL_CHANNEL = { call: 'control:call', event: 'control:event' } as const;
+/** `logRenderer` is the same channel as `IPC.logRenderer`; the control preload must not import `shared/ipc.ts` (see tests/shared/channels.test.ts). */
+export const CONTROL_CHANNEL = { call: 'control:call', event: 'control:event', logRenderer: 'log:renderer' } as const;

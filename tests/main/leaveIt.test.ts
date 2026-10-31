@@ -90,6 +90,22 @@ describe('Leave it hotkey', () => {
     expect([...registered.keys()]).toEqual(['Control+Alt+L']);
   });
 
+  it('restore to something taken keeps the working shortcut but reports the conflict', () => {
+    leave.register('Control+Alt+L');
+    owned.add('Control+Alt+K');
+    expect(leave.restore('Control+Alt+K')).toBe(false);
+    expect(leave.conflict).toBe(true);
+    expect(conflicts).toEqual([true]);
+    expect([...registered.keys()]).toEqual(['Control+Alt+L']);
+  });
+
+  it('restore to a free shortcut is a plain rebind', () => {
+    leave.register('Control+Alt+L');
+    expect(leave.restore('Control+Alt+K')).toBe(true);
+    expect(leave.conflict).toBe(false);
+    expect([...registered.keys()]).toEqual(['Control+Alt+K']);
+  });
+
   it('rebinding to the shortcut already held is a no-op', () => {
     leave.register('Control+Alt+L');
     expect(leave.rebind('Control+Alt+L')).toBe(true);

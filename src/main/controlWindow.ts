@@ -1,5 +1,6 @@
 import { BrowserWindow, type WebContents } from 'electron';
 import { CONTROL_CHANNEL, type ControlEvent } from '../shared/control';
+import type { Log } from './logs';
 import { windowIcon } from './windowIcon';
 import { UI_PARTITION } from './network';
 
@@ -17,7 +18,7 @@ export interface ControlWindow {
   dispose: () => void;
 }
 
-export function createControlWindow(opts: { preload: string; load: (w: BrowserWindow) => Promise<void> }): ControlWindow {
+export function createControlWindow(opts: { preload: string; load: (w: BrowserWindow) => Promise<void>; log?: Pick<Log, 'error'> }): ControlWindow {
   let win: BrowserWindow | null = null;
   let closing = false;
   // Events sent before the page has loaded are replayed once it has, newest of each kind only.
@@ -64,7 +65,7 @@ export function createControlWindow(opts: { preload: string; load: (w: BrowserWi
       () => {
         if (!w.isDestroyed()) w.show();
       },
-      (err: unknown) => console.error('control window failed to load', err),
+      (err: unknown) => (opts.log ? opts.log.error('control', 'control window failed to load', err) : console.error('control window failed to load', err)),
     );
     return w;
   }

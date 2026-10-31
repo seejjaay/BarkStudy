@@ -16,6 +16,8 @@ export interface EscapeKeyDeps {
   clock?: Clock;
   /** Called once per press, after the key has been released. */
   onPress: () => void;
+  /** Where a failure to register Esc is reported; the console if absent. */
+  log?: { warn: (area: string, message: string) => void };
 }
 
 export interface EscapeKey {
@@ -72,7 +74,9 @@ export function createEscapeKey(deps: EscapeKeyDeps): EscapeKey {
       reported = false;
     } else if (!reported) {
       reported = true;
-      console.error('Escape could not be registered; the effect will run to its end without it');
+      const message = 'Escape could not be registered; the effect will run to its end without it';
+      if (deps.log) deps.log.warn('escape', message);
+      else console.error(message);
     }
     return held;
   }
