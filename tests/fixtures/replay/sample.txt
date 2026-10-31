@@ -1,0 +1,267 @@
+# BarkStudy diagnostics (sample from the engine host round-trip test)
+
+```barkstudy-engine-log
+{
+  "version": 1,
+  "seed": 31,
+  "preset": "drama-queen",
+  "tuning": {
+    "checkinMinMs": 60000,
+    "checkinMaxMs": 60000,
+    "firstEscalationMs": 90000,
+    "escalationStepMs": 60000,
+    "activeSlowdown": 2,
+    "digInCooldownMs": 600000,
+    "lapsMaxMs": 6000,
+    "digInMaxMs": 8000,
+    "guiltThresholdMs": 120000,
+    "awayIdleMs": 300000,
+    "busyIdleMs": 10000
+  },
+  "lastGuiltMs": 300000,
+  "startState": {
+    "rules": {
+      "session": false,
+      "level": 0,
+      "cap": 4,
+      "paused": false,
+      "stay": false,
+      "activity": "active",
+      "suppressed": false,
+      "card": false,
+      "effect": null,
+      "digCooling": false,
+      "missedWhileAway": false
+    },
+    "now": 20000,
+    "deadlines": {
+      "checkin": null,
+      "timeout": null,
+      "effectEnd": null,
+      "digCooldownEnd": null,
+      "stayEnd": null
+    },
+    "pausedAt": null,
+    "rng": {
+      "a": -1297475112,
+      "b": -416028751,
+      "c": 34065896,
+      "d": 396504416
+    },
+    "stats": {
+      "answered": 0,
+      "treats": 0,
+      "cardShownAt": null,
+      "longestWaitMs": 0,
+      "guiltTrips": []
+    }
+  },
+  "truncated": false,
+  "entries": [
+    {
+      "type": "WINDOW",
+      "at": 1790000020000,
+      "detail": "on"
+    },
+    {
+      "type": "SESSION_START",
+      "at": 1790000020000,
+      "detail": "4"
+    },
+    {
+      "type": "TICK",
+      "at": 1790000079750,
+      "dtMs": 59750,
+      "count": 239
+    },
+    {
+      "type": "TICK",
+      "at": 1790000080000,
+      "dtMs": 250,
+      "count": 1
+    },
+    {
+      "type": "BUSY",
+      "at": 1790000080000,
+      "detail": "on"
+    },
+    {
+      "type": "TICK",
+      "at": 1790000110000,
+      "dtMs": 30000,
+      "count": 120
+    },
+    {
+      "type": "BUSY",
+      "at": 1790000110000,
+      "detail": "off"
+    },
+    {
+      "type": "TICK",
+      "at": 1790000196750,
+      "dtMs": 86750,
+      "count": 347
+    },
+    {
+      "type": "TICK",
+      "at": 1790000197000,
+      "dtMs": 250,
+      "count": 1
+    },
+    {
+      "type": "TICK",
+      "at": 1790000232750,
+      "dtMs": 35750,
+      "count": 143
+    },
+    {
+      "type": "TICK",
+      "at": 1790000233000,
+      "dtMs": 250,
+      "count": 1
+    },
+    {
+      "type": "STAY_ON",
+      "at": 1790000233000,
+      "durationMs": 900000
+    },
+    {
+      "type": "TICK",
+      "at": 1790000292750,
+      "dtMs": 59750,
+      "count": 239
+    },
+    {
+      "type": "TICK",
+      "at": 1790000293000,
+      "dtMs": 250,
+      "count": 1
+    },
+    {
+      "type": "TICK",
+      "at": 1790000352750,
+      "dtMs": 59750,
+      "count": 239
+    },
+    {
+      "type": "TICK",
+      "at": 1790000353000,
+      "dtMs": 250,
+      "count": 1
+    },
+    {
+      "type": "STAY_OFF",
+      "at": 1790000353000
+    },
+    {
+      "type": "TICK",
+      "at": 1790000412750,
+      "dtMs": 59750,
+      "count": 239
+    },
+    {
+      "type": "TICK",
+      "at": 1790000413000,
+      "dtMs": 250,
+      "count": 1
+    },
+    {
+      "type": "TICK",
+      "at": 1790000529750,
+      "dtMs": 116750,
+      "count": 467
+    },
+    {
+      "type": "TICK",
+      "at": 1790000530000,
+      "dtMs": 250,
+      "count": 1
+    },
+    {
+      "type": "TICK",
+      "at": 1790000565750,
+      "dtMs": 35750,
+      "count": 143
+    },
+    {
+      "type": "TICK",
+      "at": 1790000566000,
+      "dtMs": 250,
+      "count": 1
+    },
+    {
+      "type": "TICK",
+      "at": 1790000571750,
+      "dtMs": 5750,
+      "count": 23
+    },
+    {
+      "type": "TICK",
+      "at": 1790000572000,
+      "dtMs": 250,
+      "count": 1
+    },
+    {
+      "type": "TICK",
+      "at": 1790000593000,
+      "dtMs": 21000,
+      "count": 84
+    },
+    {
+      "type": "ANSWER_SUBMITTED",
+      "at": 1790000593000,
+      "detail": "correct"
+    },
+    {
+      "type": "TICK",
+      "at": 1790000652750,
+      "dtMs": 59750,
+      "count": 239
+    },
+    {
+      "type": "TICK",
+      "at": 1790000653000,
+      "dtMs": 250,
+      "count": 1
+    },
+    {
+      "type": "USER_ACTIVITY",
+      "at": 1790000653000,
+      "detail": "away"
+    },
+    {
+      "type": "TICK",
+      "at": 1790000769750,
+      "dtMs": 116750,
+      "count": 467
+    },
+    {
+      "type": "TICK",
+      "at": 1790000770000,
+      "dtMs": 250,
+      "count": 1
+    },
+    {
+      "type": "TICK",
+      "at": 1790000953000,
+      "dtMs": 183000,
+      "count": 732
+    },
+    {
+      "type": "USER_ACTIVITY",
+      "at": 1790000953000,
+      "detail": "active"
+    },
+    {
+      "type": "TICK",
+      "at": 1790000963000,
+      "dtMs": 10000,
+      "count": 40
+    },
+    {
+      "type": "SESSION_END",
+      "at": 1790000963000
+    }
+  ]
+}
+```

@@ -1,4 +1,5 @@
-import { createEngine, step, type EngineState } from '../engine/engine';
+import { createEngine, step, type EngineState, type TraceEntry } from '../engine/engine';
+import type { EngineLog, LogEntry } from '../engine/replay';
 import { DEFAULT_TUNING, TRAIT_PRESETS, type TraitPreset } from '../engine/tuning';
 import type { Action, Activity, Cap, Context, Event, Tuning } from '../engine/types';
 import type { GuiltTripRecord, Card } from '../shared/model';
@@ -7,12 +8,14 @@ import type { Clock } from './dogHost';
 
 /**
  * Runs the engine for the app: owns its state, ticks it while a session runs, turns its actions into calls on a sink
- * (the bubble, the dog, the treat counter), picks the card to ask, and keeps a small log of what it was fed.
+ * (the bubble, the dog, the treat counter), picks the card to ask, and keeps a replayable log of each session
+ * (see engine/replay.ts).
  * No Electron in here; the sink and the clock are injected.
  */
 
 export const HOST_TICK_MS = 250;
-const DEFAULT_LOG_CAPACITY = 500;
+/** Per session. Past it the log keeps the session's start, which is what a replay needs. */
+const DEFAULT_LOG_CAPACITY = 5_000;
 
 /** What the bubble needs. `back` stays in the main process's hands only until the bubble asks to reveal it. */
 export interface CardPrompt {
@@ -61,22 +64,6 @@ export interface SessionSummary {
 /** Events other parts of the app may send. The host itself owns the session boundary, the clock and answers. */
 export type ExternalEvent = Exclude<Event, { type: 'SESSION_START' | 'SESSION_END' | 'TICK' | 'ANSWER_SUBMITTED' }>;
 
-export interface LogEntry {
-  type: Event['type'];
-  at: number;
-  /** TICK only: total time covered by the merged ticks. */
-  dtMs?: number;
-  /** TICK only: how many ticks were merged. */
-  count?: number;
-  /** A short non-sensitive value: the activity state, the cap, whether an answer was right. */
-  detail?: string;
-}
-
-export interface Diagnostics {
-  seed: number;
-  entries: readonly LogEntry[];
-}
-
 /** What the control window shows about a running session. */
 export interface HostStatus {
   paused: boolean;
@@ -104,7 +91,8 @@ export interface EngineHost {
   setPreset: (preset: TraitPreset) => void;
   readonly running: boolean;
   status: () => HostStatus;
-  diagnostics: () => Diagnostics;
+  /** The running session's replayable log, or the last session's once it ended. Null before the first session. */
+  diagnostics: () => EngineLog | null;
   dispose: () => void;
 }
 
@@ -156,6 +144,7 @@ export function createEngineHost(opts: EngineHostOptions): EngineHost {
   let current: Card | null = null;
   let guiltTrips: GuiltTripRecord[] = [];
 
+  let preset: TraitPreset = 'classic';
   let ctx: Context = {
     traits: TRAIT_PRESETS.classic,
     tuning: DEFAULT_TUNING,
@@ -168,11 +157,23 @@ export function createEngineHost(opts: EngineHostOptions): EngineHost {
   let activity: Activity = 'active';
   let suppressed = false;
 
-  const log: LogEntry[] = [];
-  function record(e: Event): void {
+  let log: EngineLog | null = null;
+  // Whether the last entry is a run of quiet ticks that the next quiet tick may join. Only quiet ticks merge: a
+  // tick in which a deadline fired re-arms deadlines from its own end, so replay needs it at its exact length.
+  let quietRun = false;
+
+  function push(entry: LogEntry): void {
+    quietRun = false;
+    if (!log || log.truncated) return;
+    if (log.entries.length >= capacity) log.truncated = true;
+    else log.entries.push(entry);
+  }
+
+  function record(e: Event, quietTick: boolean): void {
+    if (!log || log.truncated) return;
     const at = clock.now();
-    const last = log.at(-1);
-    if (e.type === 'TICK' && last?.type === 'TICK') {
+    const last = log.entries.at(-1);
+    if (e.type === 'TICK' && quietTick && quietRun && last?.type === 'TICK') {
       last.dtMs = (last.dtMs ?? 0) + e.dtMs;
       last.count = (last.count ?? 1) + 1;
       last.at = at;
@@ -182,8 +183,14 @@ export function createEngineHost(opts: EngineHostOptions): EngineHost {
     const detail = detailOf(e);
     if (detail !== undefined) entry.detail = detail;
     if (e.type === 'TICK') Object.assign(entry, { dtMs: e.dtMs, count: 1 });
-    log.push(entry);
-    while (log.length > capacity) log.shift();
+    if (e.type === 'STAY_ON') entry.durationMs = e.durationMs;
+    push(entry);
+    quietRun = quietTick && log.entries.at(-1) === entry;
+  }
+
+  /** A context change replay needs, logged only while a session runs. */
+  function note(type: 'BUSY' | 'WINDOW' | 'PRESET', detail: string): void {
+    if (running) push({ type, at: clock.now(), detail });
   }
 
   function route(actions: readonly Action[]): void {
@@ -222,9 +229,11 @@ export function createEngineHost(opts: EngineHostOptions): EngineHost {
   }
 
   function apply(e: Event): void {
-    record(e);
     const hadCard = state.rules.card;
-    const r = step(state, e, ctx);
+    const trace: TraceEntry[] | undefined = e.type === 'TICK' ? [] : undefined;
+    const r = step(state, e, ctx, trace);
+    // A whole positive tick that fired nothing; merged runs of these split back evenly without changing anything.
+    record(e, e.type === 'TICK' && trace?.length === 0 && Number.isInteger(e.dtMs) && e.dtMs > 0);
     state = r.state;
     route(r.actions);
     if (hadCard && !state.rules.card) {
@@ -264,9 +273,23 @@ export function createEngineHost(opts: EngineHostOptions): EngineHost {
         lastGuiltMs: o.lastGuiltMs ?? null,
       };
       state = { ...state, stats: freshStats() };
+      log = {
+        version: 1,
+        seed: opts.seed,
+        preset: o.preset,
+        tuning: ctx.tuning,
+        lastGuiltMs: ctx.lastGuiltMs,
+        startState: state,
+        truncated: false,
+        entries: [],
+      };
+      preset = o.preset;
       running = true;
       startedAt = clock.now();
       lastTickAt = startedAt;
+      // Replay starts from a blank context, so carry in what the screen already said before the session.
+      if (ctx.activeWindowId !== null) note('WINDOW', 'on');
+      if (ctx.busy) note('BUSY', 'on');
       apply({ type: 'SESSION_START', cap: o.cap });
       if (activity !== 'active') apply({ type: 'USER_ACTIVITY', state: activity });
       if (suppressed) apply({ type: 'SUPPRESS_CHANGED', on: true });
@@ -306,13 +329,18 @@ export function createEngineHost(opts: EngineHostOptions): EngineHost {
     },
 
     setBusy(busy) {
+      if (busy !== ctx.busy) note('BUSY', busy ? 'on' : 'off');
       ctx = { ...ctx, busy };
     },
     setActiveWindow(id) {
+      // The engine only cares whether there is a window; which one is the sink's business.
+      if ((id === null) !== (ctx.activeWindowId === null)) note('WINDOW', id === null ? 'off' : 'on');
       ctx = { ...ctx, activeWindowId: id };
     },
-    setPreset(preset) {
-      ctx = { ...ctx, traits: TRAIT_PRESETS[preset] };
+    setPreset(p) {
+      if (p !== preset) note('PRESET', p);
+      preset = p;
+      ctx = { ...ctx, traits: TRAIT_PRESETS[p] };
     },
 
     get running() {
@@ -331,7 +359,7 @@ export function createEngineHost(opts: EngineHostOptions): EngineHost {
         treats: state.stats.treats,
       };
     },
-    diagnostics: () => ({ seed: opts.seed, entries: log.map((e) => ({ ...e })) }),
+    diagnostics: () => (log ? structuredClone(log) : null),
     dispose() {
       stopTicking();
       running = false;

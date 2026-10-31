@@ -1,4 +1,8 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ENGINE_LOG_FENCE, replayLog, type EngineLog } from '../../src/engine/replay';
+import type { Action } from '../../src/engine/types';
+import type { Clock } from '../../src/main/dogHost';
 import { createEngineHost, type CardPrompt, type EngineHost, type HostSink, type StartOptions } from '../../src/main/engineHost';
 import type { Card } from '../../src/shared/model';
 import { newCard } from '../../src/shared/srs';
@@ -278,7 +282,7 @@ describe('state that outlives a session', () => {
   it('events sent while no session runs are not logged or stepped', () => {
     const { host } = setup();
     host.dispatch({ type: 'PAUSE' });
-    expect(host.diagnostics().entries).toEqual([]);
+    expect(host.diagnostics()).toBeNull();
   });
 });
 
@@ -317,37 +321,204 @@ describe('what the engine drives outward', () => {
 });
 
 describe('diagnostics log', () => {
+  it('is null before the first session', () => {
+    const { host } = setup();
+    expect(host.diagnostics()).toBeNull();
+  });
+
   it('records event types, time deltas and the seed, and never card text', () => {
     const { host } = setup(1234);
     host.start(opts());
     vi.advanceTimersByTime(61_000);
     host.answer('good');
-    const d = host.diagnostics();
+    vi.advanceTimersByTime(3 * MIN);
+    host.answer('again');
+    const d = host.diagnostics()!;
     expect(d.seed).toBe(1234);
     const types = d.entries.map((e) => e.type);
     expect(types).toContain('SESSION_START');
     expect(types).toContain('TICK');
     expect(types).toContain('ANSWER_SUBMITTED');
     const text = JSON.stringify(d);
-    expect(text).not.toContain('France');
-    expect(text).not.toContain('Paris');
+    for (const c of cards()) {
+      expect(text).not.toContain(c.front);
+      expect(text).not.toContain(c.back);
+    }
   });
 
   it('merges consecutive ticks, so a long idle stretch is one entry', () => {
     const { host } = setup();
     host.start(opts({ checkinMinMinutes: 60, checkinMaxMinutes: 60 }));
     vi.advanceTimersByTime(5 * MIN);
-    const ticks = host.diagnostics().entries.filter((e) => e.type === 'TICK');
+    const ticks = host.diagnostics()!.entries.filter((e) => e.type === 'TICK');
     expect(ticks).toHaveLength(1);
     expect(ticks[0]!.dtMs).toBeGreaterThanOrEqual(5 * MIN - 250);
   });
 
-  it('is a rolling window: it never grows past its capacity', () => {
-    const { sink } = makeSink();
-    const small = createEngineHost({ seed: 1, sink, logCapacity: 20 });
-    small.start(opts({ checkinMinMinutes: 60, checkinMaxMinutes: 60 }));
-    for (let i = 0; i < 100; i++) small.dispatch(i % 2 ? { type: 'PAUSE' } : { type: 'RESUME' });
-    expect(small.diagnostics().entries).toHaveLength(20);
-    small.dispose();
+  it('keeps the first 5,000 entries of a session and marks the rest truncated', () => {
+    const { host } = setup();
+    host.start(opts({ checkinMinMinutes: 60, checkinMaxMinutes: 60 }));
+    for (let i = 0; i < 5100; i++) host.dispatch(i % 2 ? { type: 'RESUME' } : { type: 'PAUSE' });
+    const d = host.diagnostics()!;
+    expect(d.truncated).toBe(true);
+    expect(d.entries).toHaveLength(5000);
+    expect(d.entries[0]!.type).toBe('SESSION_START');
+  });
+
+  it('is per session: the next session starts a fresh log, and the last one stays readable after it ends', () => {
+    const { host } = setup();
+    host.start(opts({ checkinMinMinutes: 60, checkinMaxMinutes: 60 }));
+    for (let i = 0; i < 5100; i++) host.dispatch(i % 2 ? { type: 'RESUME' } : { type: 'PAUSE' });
+    host.end();
+    host.start(opts({ preset: 'calm' }));
+    host.end();
+    const d = host.diagnostics()!;
+    expect(d.truncated).toBe(false);
+    expect(d.preset).toBe('calm');
+    expect(d.entries.map((e) => e.type)).toEqual(['SESSION_START', 'SESSION_END']);
+  });
+
+  it('notes context changes during a session, once per change', () => {
+    const { host } = setup();
+    host.setBusy(true);
+    host.start(opts({ checkinMinMinutes: 60, checkinMaxMinutes: 60 }));
+    host.setActiveWindow(5);
+    host.setActiveWindow(6);
+    host.setBusy(true);
+    host.setBusy(false);
+    host.setPreset('calm');
+    host.setPreset('calm');
+    host.setActiveWindow(null);
+    host.end();
+    host.setBusy(true);
+    const notes = host
+      .diagnostics()!
+      .entries.filter((e) => e.type === 'BUSY' || e.type === 'WINDOW' || e.type === 'PRESET')
+      .map((e) => `${e.type}:${e.detail}`);
+    expect(notes).toEqual(['BUSY:on', 'WINDOW:on', 'BUSY:off', 'PRESET:calm', 'WINDOW:off']);
+  });
+});
+
+/** Every action the host routed to its sink, with window ids normalised to 1 the way a replay reports them. */
+function actionSink(): { sink: HostSink; actions: Action[] } {
+  const actions: Action[] = [];
+  const sink: HostSink = {
+    showCard: () => {
+      actions.push({ type: 'SHOW_FLASHCARD' });
+    },
+    hideCard: () => {},
+    say: (line, params) => {
+      actions.push(params ? { type: 'SAY', line, params } : { type: 'SAY', line });
+    },
+    expression: (name) => {
+      actions.push({ type: 'SET_EXPRESSION', name });
+    },
+    walkTo: () => {
+      actions.push({ type: 'WALK_TO', windowId: 1 });
+    },
+    effect: (a) => {
+      actions.push(normaliseWindow(a));
+    },
+    treat: () => {
+      actions.push({ type: 'AWARD_TREAT' });
+    },
+    guiltTrip: (waitedMs) => {
+      actions.push({ type: 'RECORD_GUILT_TRIP', waitedMs });
+    },
+  };
+  return { sink, actions };
+}
+
+const normaliseWindow = (a: Action): Action => ('windowId' in a ? { ...a, windowId: 1 } : a);
+
+/** `WRITE_REPLAY_FIXTURE=1 npx vitest run tests/main/engineHost.test.ts` refreshes the sample the replay CLI is smoked on. */
+function writeReplayFixture(log: EngineLog): void {
+  if (!process.env.WRITE_REPLAY_FIXTURE) return;
+  const text = [
+    '# BarkStudy diagnostics (sample from the engine host round-trip test)',
+    '',
+    `\`\`\`${ENGINE_LOG_FENCE}`,
+    JSON.stringify(log, null, 2),
+    '```',
+    '',
+  ].join('\n');
+  mkdirSync('tests/fixtures/replay', { recursive: true });
+  writeFileSync('tests/fixtures/replay/sample.txt', text);
+}
+
+/** Two sessions in one host; returns session B's log and the actions the host routed during it. */
+function roundTripScenario(clock?: Clock): { log: EngineLog; actions: Action[] } {
+  const { sink, actions } = actionSink();
+  const h = createEngineHost({ seed: 31, sink, ...(clock ? { clock } : {}) });
+  host = h;
+  const count = (type: Action['type']) => actions.filter((a) => a.type === type).length;
+  const until = (done: () => boolean, maxMs = 30 * MIN) => {
+    for (let t = 0; t < maxMs && !done(); t += 250) vi.advanceTimersByTime(250);
+    expect(done()).toBe(true);
+  };
+
+  // Session A moves the engine's state and RNG on, so session B does not start from a fresh engine.
+  h.setActiveWindow(42);
+  h.start(opts());
+  vi.advanceTimersByTime(20_000);
+  h.end();
+  expect(h.diagnostics()!.preset).toBe('classic');
+
+  actions.length = 0;
+  h.start(opts({ preset: 'drama-queen', lastGuiltMs: 300_000 }));
+  until(() => count('SHOW_FLASHCARD') > 0);
+  h.setBusy(true);
+  vi.advanceTimersByTime(30_000);
+  h.setBusy(false);
+  h.setActiveWindow(43);
+  until(() => count('RUN_LAPS') > 0);
+  h.dispatch({ type: 'STAY_ON', durationMs: 900_000 });
+  vi.advanceTimersByTime(2 * MIN);
+  h.dispatch({ type: 'STAY_OFF' });
+  const shown = count('SHOW_FLASHCARD');
+  until(() => count('SHOW_FLASHCARD') > shown);
+  vi.advanceTimersByTime(3 * MIN);
+  expect(h.answer('good')).toBe(true);
+  expect(count('RECORD_GUILT_TRIP')).toBe(1);
+  // A card that times out while away makes the return a greeting, with the new wait, not the one the session started with.
+  const shownAgain = count('SHOW_FLASHCARD');
+  until(() => count('SHOW_FLASHCARD') > shownAgain);
+  h.dispatch({ type: 'USER_ACTIVITY', state: 'away' });
+  vi.advanceTimersByTime(5 * MIN);
+  const before = actions.length;
+  h.dispatch({ type: 'USER_ACTIVITY', state: 'active' });
+  const greeting = actions.slice(before).find((a) => a.type === 'SAY' && a.params?.minutes !== undefined);
+  expect(greeting).toBeDefined();
+  expect(greeting).not.toMatchObject({ params: { minutes: 5 } });
+  vi.advanceTimersByTime(10_000);
+  h.end();
+  return { log: h.diagnostics()!, actions };
+}
+
+describe('replay round trip', () => {
+  it("replaying a session's log reproduces exactly the actions the host emitted", () => {
+    const { log, actions } = roundTripScenario();
+    expect(log.preset).toBe('drama-queen');
+    expect(log.lastGuiltMs).toBe(300_000);
+    const replayed = replayLog(log);
+    expect(replayed.violation).toBeNull();
+    expect(replayed.actions.flat().map(normaliseWindow)).toEqual(actions);
+    writeReplayFixture(log);
+  });
+
+  it('stays exact when real ticks jitter around 250 ms', () => {
+    // Timers still run on 250 ms, but the clock reads up to 10 ms off, the way a busy main process does.
+    let reads = 0;
+    const jittery: Clock = {
+      now: () => Date.now() + ((reads++ * 37) % 11),
+      setTimeout: (fn, ms) => setTimeout(fn, ms),
+      clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+    };
+    const { log, actions } = roundTripScenario(jittery);
+    const tickLengths = new Set(log.entries.filter((e) => e.type === 'TICK' && e.count === 1).map((e) => e.dtMs));
+    expect(tickLengths.size).toBeGreaterThan(1);
+    const replayed = replayLog(log);
+    expect(replayed.violation).toBeNull();
+    expect(replayed.actions.flat().map(normaliseWindow)).toEqual(actions);
   });
 });
