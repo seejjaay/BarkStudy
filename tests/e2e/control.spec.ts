@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { seedOnboarded } from './helpers';
 
 let app: ElectronApplication | null = null;
 let userData: string;
@@ -37,6 +38,7 @@ function debug<T>(method: string, ...args: unknown[]): Promise<T> {
 
 test.beforeEach(async () => {
   userData = fs.mkdtempSync(join(os.tmpdir(), 'barkstudy-e2e-ui-'));
+  seedOnboarded(userData);
   await launch();
 });
 

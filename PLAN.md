@@ -299,7 +299,7 @@ step(s: EngineState, e: Event, ctx: Context): { state: EngineState; actions: Act
 - **T4.5 Sound.** Bark, whine, happy yip and dig scratch, with a volume slider and mute. It's silent while suppressed, and sounds must be short (< 1.5 s) and never loop.
 - **T4.6 Guilt memory.** On session start, `ctx.lastGuiltMs` comes from history → "Last time you left me for N minutes."
 
-## Milestone 5: Product shell
+## Milestone 5: Product shell *(split in two. **M5a is done:** T5.1 onboarding and T5.2 settings, data and About; design in `docs/superpowers/specs/2026-10-31-m5a-product-shell-design.md`, plan in `docs/superpowers/plans/2026-10-31-m5a-product-shell.md`. First-run and settings flows have e2e specs (`onboarding.spec.ts`, `settings.spec.ts`). Decided on the way: personality is the three presets only (trait sliders wait for M7 tuning), and the update-check and beta toggles are stored now for M6's updater to read. **M5b is next:** T5.3 accessibility pass, T5.4 diagnostics (About gains "Copy diagnostics" and "Report a bug"), T5.5 power awareness, and the rest of T5.6, which is the deck import/export round trip; the control window's inline strings still need moving into `i18n/en.ts`. Manual rows are in `docs/test-matrix.md`.)*
 
 *Acceptance: a new user installs, gets through onboarding, studies, changes settings, and can export, back up and restore their data, all keyboard-only if they want.*
 
