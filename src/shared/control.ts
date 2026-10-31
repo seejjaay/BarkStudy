@@ -1,5 +1,6 @@
 import type { SkippedRow } from './deckParse';
 import type { Card, Deck, SessionRecord } from './model';
+import type { Settings } from './settings';
 import type { Grade } from './srs';
 
 /**
@@ -23,7 +24,13 @@ export type ErrorCode =
   | 'invalid-card'
   | 'deck-in-use'
   | 'file-unreadable'
-  | 'file-too-large';
+  | 'file-too-large'
+  | 'not-a-backup'
+  | 'newer-version'
+  | 'hotkey-taken'
+  | 'hotkey-invalid'
+  | 'session-running'
+  | 'partly-replaced';
 
 export interface AppError {
   code: ErrorCode;
@@ -133,6 +140,38 @@ export interface LibrarySnapshot {
   leaveItConflict: boolean;
   /** How the Leave it shortcut is written, such as "Ctrl+Alt+L". */
   leaveItLabel: string;
+  /** False until onboarding has been finished or skipped once. */
+  onboarded: boolean;
+  /** The app version, for the About page. */
+  version: string;
+}
+
+/** The settings that `settings:update` may change. Shortcuts have their own operation (they must be bound first) and `onboarded` is set by finishing onboarding. */
+export type SettingsPatch = Partial<Omit<Settings, 'leaveItHotkey' | 'bubbleHotkey' | 'onboarded'>>;
+
+export type LinkId = 'repo' | 'releases' | 'license';
+
+export interface LoginItemState {
+  /** False where start-with-Windows is not offered (a development run, not the installed app). */
+  available: boolean;
+  on: boolean;
+}
+
+export interface SettingsView {
+  settings: Settings;
+  loginItem: LoginItemState;
+  /** Process names of the windows open right now, for picking an app to leave alone. */
+  openApps: string[];
+  /** Where the data files live, for display. */
+  dataDir: string;
+}
+
+export interface OnboardingFinish {
+  cap: Settings['cap'];
+  preset: Settings['preset'];
+  updateChecks: boolean;
+  /** Add Pandesal's starter deck if it is not there yet. */
+  sampleDeck: boolean;
 }
 
 export interface StartRequest {
@@ -169,6 +208,22 @@ export interface ControlOps {
   'session:answer': [{ grade: Grade }, Result<void>];
   'session:control': [SessionAction, Result<void>];
   'session:dismiss-summary': [void, void];
+  'settings:get': [void, SettingsView];
+  'settings:update': [SettingsPatch, Result<Settings>];
+  'settings:hotkey': [{ which: 'leaveIt' | 'bubble'; accelerator: string }, Result<Settings>];
+  'settings:login-item': [{ on: boolean }, Result<LoginItemState>];
+  'link:open': [{ id: LinkId }, Result<void>];
+  'data:open-folder': [void, Result<void>];
+  /** Main opens the save dialog. `null` inside `ok` means the user cancelled. */
+  'data:export-all': [void, Result<{ path: string } | null>];
+  /** Main opens the file dialog and replaces everything with the backup. Refused while a session runs. */
+  'data:import-all': [void, Result<{ path: string } | null>];
+  /** Refused while a session runs. */
+  'data:reset': [void, Result<void>];
+  /** While on, a Leave it press with no session is reported as a `leave-it-pressed` event instead of a notification. */
+  'onboarding:practice': [{ on: boolean }, void];
+  /** Saves the choices, marks onboarding done and returns the starter deck's id (null if not asked for). */
+  'onboarding:finish': [OnboardingFinish, Result<{ deckId: string | null }>];
 }
 
 export type OpName = keyof ControlOps;
@@ -195,6 +250,17 @@ export const OP_NAMES: readonly OpName[] = [
   'session:answer',
   'session:control',
   'session:dismiss-summary',
+  'settings:get',
+  'settings:update',
+  'settings:hotkey',
+  'settings:login-item',
+  'link:open',
+  'data:open-folder',
+  'data:export-all',
+  'data:import-all',
+  'data:reset',
+  'onboarding:practice',
+  'onboarding:finish',
 ];
 
 export interface AppStatus {
@@ -203,7 +269,7 @@ export interface AppStatus {
   leaveItLabel: string;
 }
 
-export type ControlEvent = { type: 'session'; view: SessionView } | ({ type: 'status' } & AppStatus);
+export type ControlEvent = { type: 'session'; view: SessionView } | ({ type: 'status' } & AppStatus) | { type: 'leave-it-pressed' };
 
 /** `window.barkControl`, exposed by the control window's preload. */
 export interface BarkControlApi {

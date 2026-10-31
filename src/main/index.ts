@@ -1,8 +1,8 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { app, globalShortcut, ipcMain, Notification, powerMonitor, screen, session, systemPreferences, type Display, type WebContents } from 'electron';
+import { app, globalShortcut, ipcMain, Notification, powerMonitor, screen, session, shell, systemPreferences, type Display, type WebContents } from 'electron';
 import { DEFAULT_TUNING } from '../engine/tuning';
-import { BUBBLE_HOTKEY } from '../shared/bubble';
+import type { Settings } from '../shared/settings';
 import { CONTROL_CHANNEL, type AppStatus } from '../shared/control';
 import type { DisplayInfo, RawWindow } from '../shared/geometry';
 import { toDipWindows } from '../shared/geometry';
@@ -123,6 +123,11 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
     hotkeys,
     notify,
     onConflictChange: () => publishStatus(),
+    idlePress: () => {
+      if (!leaveItPractice) return false;
+      controlWindow.send({ type: 'leave-it-pressed' });
+      return true;
+    },
   });
   const appTray = createTray({
     inputs: () => ({
@@ -146,6 +151,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       setFocus: (sender, on) => overlays.setFocus(sender as WebContents, on),
     },
     hotkeys,
+    accelerator: () => library.getSettings().bubbleHotkey,
   });
   for (const channel of [IPC.bubbleSubmit, IPC.bubbleReveal, IPC.bubbleGrade]) {
     ipcMain.handle(channel, (event, payload: unknown) => bubble.handle(channel, event.sender, payload));
@@ -153,11 +159,53 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
   for (const channel of [IPC.bubbleDismiss, IPC.bubbleOpen, IPC.bubbleFocus]) {
     ipcMain.on(channel, (event, payload: unknown) => void bubble.handle(channel, event.sender, payload));
   }
+  let rawWindows: RawWindow[] = [];
+  // e2e only: a test cannot click a native dialog, so it names the file for the next backup export or restore instead.
+  let nextDialogPath: string | null = null;
+  const takeDialogPath = (): string | null => {
+    const path = nextDialogPath;
+    nextDialogPath = null;
+    return path;
+  };
+  // While the first-run Leave it practice is on, a press with no session is the answer to "press it once".
+  let leaveItPractice = false;
+  // Follows the saved choice: "system" asks Windows, which is read again whenever the displays change.
+  const applyReducedMotion = (mode: Settings['reducedMotion']): void => {
+    try {
+      dogHost.setReducedMotion(mode === 'system' ? systemPreferences.getAnimationSettings().prefersReducedMotion : mode === 'on');
+    } catch {
+      // Older Windows builds: keep the default.
+    }
+  };
   const handlers = createControlHandlers({
     library,
     session: studySession,
-    files: createFileAccess(() => controlWindow.window()),
+    files: createFileAccess(() => controlWindow.window(), e2e ? takeDialogPath : undefined),
     status: appStatus,
+    platform: {
+      // Start-with-Windows is for the installed app; a development run would register electron.exe.
+      loginItem: {
+        get: () => ({ available: app.isPackaged, on: app.isPackaged && app.getLoginItemSettings().openAtLogin }),
+        set: (on) => app.setLoginItemSettings({ openAtLogin: on, args: ['--hidden'] }),
+      },
+      openApps: () => [...new Set(rawWindows.map((w) => w.processName.toLowerCase()).filter((n) => n !== ''))].sort(),
+      dataDir: join(app.getPath('userData'), 'data'),
+      openLink: (url) => void shell.openExternal(url),
+      applyReducedMotion,
+      version: app.getVersion(),
+      openPath: (path) => shell.openPath(path),
+      // The saved shortcuts, reduced motion and tray follow the settings that were just swapped in.
+      afterReplace: () => {
+        const saved = library.getSettings();
+        leaveIt.rebind(saved.leaveItHotkey);
+        applyReducedMotion(saved.reducedMotion);
+        publishStatus();
+      },
+      setPractice: (on) => {
+        leaveItPractice = on;
+      },
+    },
+    hotkeys: { leaveIt: { rebind: (a) => leaveIt.rebind(a) }, bubble: { rebind: (a) => bubble.rebind(a) } },
   });
   ipcMain.handle(CONTROL_CHANNEL.call, async (event, message: unknown) => {
     if (!controlWindow.isOwn(event.sender)) throw new Error('not the control window');
@@ -182,8 +230,6 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
   powerMonitor.on('lock-screen', () => idle.setLocked(true));
   powerMonitor.on('unlock-screen', () => idle.setLocked(false));
 
-  let rawWindows: RawWindow[] = [];
-
   function pushWorld(): void {
     const displays = screen.getAllDisplays().map(toInfo);
     const tracked = toDipWindows(rawWindows, (r) => screen.screenToDipRect(null, r), displays);
@@ -194,11 +240,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
 
   function displaysChanged(): void {
     overlays.sync(screen.getAllDisplays());
-    try {
-      dogHost.setReducedMotion(systemPreferences.getAnimationSettings().prefersReducedMotion);
-    } catch {
-      // Older Windows builds: keep the default.
-    }
+    applyReducedMotion(library.getSettings().reducedMotion);
     pushWorld();
   }
 
@@ -232,19 +274,23 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       tracker,
       overlays,
       session: studySession,
-      bubbleHotkeyRegistered: () => globalShortcut.isRegistered(BUBBLE_HOTKEY),
+      bubbleHotkeyRegistered: () => globalShortcut.isRegistered(library.getSettings().bubbleHotkey),
       tray: appTray,
       leaveIt,
       escapeKey,
       recorder,
       library,
+      setNextDialogPath: (path) => {
+        nextDialogPath = path;
+      },
     });
   }
 
   displaysChanged();
   tracker.start();
   idle.start();
-  if (process.env['BARKSTUDY_NO_CONTROL'] !== '1') controlWindow.show();
+  // A start-with-Windows launch passes --hidden: the dog and the tray come up, the window waits to be opened.
+  if (process.env['BARKSTUDY_NO_CONTROL'] !== '1' && !process.argv.includes('--hidden')) controlWindow.show();
 
   // Quitting mid-session must not lose it: finish the session and let pending review saves land first.
   let shuttingDown = false;

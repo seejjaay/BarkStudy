@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createLibrary, type Library } from '../../src/main/library';
 import { createStorage, nodeFs } from '../../src/main/storage/io';
 import { parseDeck } from '../../src/shared/deckParse';
-import type { Settings } from '../../src/shared/settings';
+import { DEFAULT_SETTINGS, type Settings } from '../../src/shared/settings';
 import { newCard, review } from '../../src/shared/srs';
 
 let dir: string;
@@ -73,7 +73,7 @@ describe('settings', () => {
   const preM4Data = { cap: 3, preset: 'drama-queen', checkinMinMinutes: 7, checkinMaxMinutes: 20, excludedApps: ['zoom.exe'], leaveItHotkey: 'Ctrl+Alt+K' };
   const preM4 = JSON.stringify({ schemaVersion: 1, data: preM4Data });
 
-  it('a settings.json from before M4 loads with soundOn true and volume 0.4 and is not set aside', async () => {
+  it('a settings.json from before M4 loads with every newer setting at its default and is not set aside', async () => {
     fs.writeFileSync(join(dir, 'settings.json'), preM4);
     const lib = await open();
     expect(lib.notices()).toEqual([]);
@@ -86,6 +86,11 @@ describe('settings', () => {
       leaveItHotkey: 'Ctrl+Alt+K',
       soundOn: true,
       volume: 0.4,
+      onboarded: false,
+      reducedMotion: 'system',
+      updateChecks: true,
+      betaChannel: false,
+      bubbleHotkey: 'Control+Alt+A',
     });
     expect(fs.readFileSync(join(dir, 'settings.json'), 'utf8')).toBe(preM4);
     const backups = join(dir, 'backups');
@@ -125,6 +130,20 @@ describe('settings', () => {
     expect(code(await lib.updateSettings({ cap: 9 as unknown as 2 }))).toBe('invalid-request');
     expect(lib.getSettings()).toMatchObject({ soundOn: true, volume: 0.65 });
     expect((await open()).getSettings()).toMatchObject({ soundOn: true, volume: 0.65 });
+  });
+
+  it('updateSettings refuses a whole that is not usable and keeps what was saved', async () => {
+    const lib = await open();
+    ok(await lib.updateSettings({ cap: 3 }));
+    for (const bad of [{ preset: 'x' }, { checkinMinMinutes: 30, checkinMaxMinutes: 10 }, { checkinMaxMinutes: 241 }, { leaveItHotkey: 'Control+Alt+A' }, { bubbleHotkey: 'L' }]) {
+      expect(code(await lib.updateSettings(bad as Partial<Settings>)), JSON.stringify(bad)).toBe('invalid-request');
+    }
+    expect(lib.getSettings()).toMatchObject({ cap: 3, preset: 'classic', checkinMinMinutes: 5, checkinMaxMinutes: 15 });
+  });
+
+  it('updateSettings stores excluded apps in their normal form', async () => {
+    const lib = await open();
+    expect(ok(await lib.updateSettings({ excludedApps: ['Game.EXE', ' game.exe', ''] })).excludedApps).toEqual(['game.exe']);
   });
 
   it('updateSettings ignores a field that is not a setting', async () => {
@@ -394,6 +413,197 @@ describe('history', () => {
     expect(lib.lastGuiltMs()).toBeNull();
     ok(await lib.recordSession({ deckId: 'd', topic: '', summary: summary({ guilt: [150_000, 200_000] }) }));
     expect(lib.lastGuiltMs()).toBe(200_000);
+  });
+});
+
+describe('whole-data backup', () => {
+  interface Bundle {
+    app: string;
+    kind: string;
+    exportedAt: string;
+    stores: Record<string, { schemaVersion: number; data: unknown }>;
+  }
+  const FIXTURE = join(__dirname, '..', 'fixtures', 'backups', 'v1-export.json');
+
+  async function populated(): Promise<Library> {
+    const lib = await open();
+    const deck = ok(await lib.createDeck('French'));
+    ok(await lib.importInto(deck.id, 'chat,cat\nchien,dog'));
+    ok(await lib.recordSession({ deckId: deck.id, topic: 'Verbs', summary: summary() }));
+    ok(await lib.updateSettings({ cap: 3, preset: 'calm', onboarded: true }));
+    return lib;
+  }
+  const stateOf = (lib: Library) => ({
+    decks: lib.listDecks().map((d) => lib.getDeck(d.id)),
+    sessions: lib.listSessions(),
+    settings: lib.getSettings(),
+    history: lib.history(),
+  });
+  const filesOf = () => ['decks', 'settings', 'history'].map((n) => (fs.existsSync(join(dir, `${n}.json`)) ? fs.readFileSync(join(dir, `${n}.json`), 'utf8') : null));
+  const backupFiles = () => (fs.existsSync(join(dir, 'backups')) ? fs.readdirSync(join(dir, 'backups')) : []);
+  const edited = (json: string, edit: (b: Bundle) => void): string => {
+    const b = JSON.parse(json) as Bundle;
+    edit(b);
+    return JSON.stringify(b);
+  };
+
+  it('exports a bundle that names the app and carries all three stores', async () => {
+    const b = JSON.parse(ok((await populated()).exportAll())) as Bundle;
+    expect(b).toMatchObject({ app: 'barkstudy', kind: 'backup' });
+    expect(Object.keys(b.stores).sort()).toEqual(['decks', 'history', 'settings']);
+    expect(b.stores['settings']).toMatchObject({ schemaVersion: 1, data: { cap: 3, onboarded: true } });
+  });
+
+  it('exporting then replacing gives back exactly what was exported, now and after reopening', async () => {
+    const lib = await populated();
+    const before = stateOf(lib);
+    const json = ok(lib.exportAll());
+    ok(await lib.createDeck('Extra'));
+    ok(await lib.updateSettings({ cap: 2, onboarded: false }));
+    ok(await lib.replaceAll(json));
+    expect(stateOf(lib)).toEqual(before);
+    expect(stateOf(await open())).toEqual(before);
+  });
+
+  it('refuses to export while a store is unavailable, so a blank is never passed off as the user data', async () => {
+    fs.writeFileSync(join(dir, 'decks.json'), JSON.stringify({ schemaVersion: 99, data: {} }));
+    expect(code((await open()).exportAll())).toBe('store-unavailable');
+  });
+
+  it.each<[string, string, (b: Bundle) => void, string]>([
+    ['a bundle missing the history store', 'not-a-backup', (b) => void delete b.stores['history'], ''],
+    ['a store that fails validation', 'not-a-backup', (b) => void (b.stores['history']!.data = { sessions: 'x' }), ''],
+    ['settings that are valid on disk but not usable (both shortcuts the same)', 'not-a-backup', (b) => void (b.stores['settings']!.data = { ...(b.stores['settings']!.data as object), leaveItHotkey: 'Ctrl+Alt+A' }), ''],
+    ['a file from another kind of export', 'not-a-backup', (b) => void (b.kind = 'deck'), ''],
+    ['a store written by a newer app', 'newer-version', (b) => void (b.stores['settings']!.schemaVersion = 99), ''],
+  ])('refuses %s and changes nothing', async (_name, expected, edit) => {
+    const lib = await populated();
+    const good = ok(lib.exportAll());
+    ok(await lib.updateSettings({ cap: 2 }));
+    const before = stateOf(lib);
+    const files = filesOf();
+    const backupsBefore = backupFiles();
+    expect(code(await lib.replaceAll(edited(good, edit)))).toBe(expected);
+    expect(stateOf(lib)).toEqual(before);
+    expect(filesOf()).toEqual(files);
+    expect(backupFiles()).toEqual(backupsBefore);
+  });
+
+  it.each([['truncated JSON', '{"app":"barkstudy"'], ['a JSON array', '[]'], ['a deck CSV', 'chat,cat\nchien,dog'], ['nothing', '']])('refuses %s', async (_name, text) => {
+    const lib = await populated();
+    const before = stateOf(lib);
+    expect(code(await lib.replaceAll(text))).toBe('not-a-backup');
+    expect(stateOf(lib)).toEqual(before);
+  });
+
+  it('copies each current file into backups/ before it overwrites it', async () => {
+    const lib = await populated();
+    const json = ok(lib.exportAll());
+    ok(await lib.replaceAll(json));
+    for (const name of ['decks', 'settings', 'history']) {
+      expect(backupFiles().some((f) => f.startsWith(`${name}.before-replace-v1-`)), name).toBe(true);
+    }
+  });
+
+  it('brings back a store that opened unavailable, keeps its unreadable file in backups/, and drops its notice', async () => {
+    const future = JSON.stringify({ schemaVersion: 99, data: { decks: 'from the future' } });
+    const good = ok((await populated()).exportAll());
+    fs.writeFileSync(join(dir, 'decks.json'), future);
+    const lib = await open();
+    expect(lib.notices()).toEqual([expect.objectContaining({ store: 'decks', kind: 'unavailable' })]);
+    ok(await lib.replaceAll(good));
+    expect(lib.notices()).toEqual([]);
+    ok(await lib.createDeck('Works again'));
+    expect(backupFiles().some((f) => f.startsWith('decks.before-replace-v99-'))).toBe(true);
+    expect(fs.readFileSync(join(dir, 'backups', backupFiles().find((f) => f.startsWith('decks.before-replace-v99-'))!), 'utf8')).toBe(future);
+  });
+
+  it('reset leaves no decks or history, default settings with onboarding to do, and backups of what was there', async () => {
+    const lib = await populated();
+    ok(await lib.resetAll());
+    expect(lib.listDecks()).toEqual([]);
+    expect(lib.listSessions()).toEqual([]);
+    expect(lib.history()).toEqual({ sessions: [], guiltTrips: [], treats: 0 });
+    expect(lib.getSettings()).toEqual(DEFAULT_SETTINGS);
+    expect(backupFiles().some((f) => f.startsWith('decks.before-replace-v1-'))).toBe(true);
+    expect(stateOf(await open())).toEqual(stateOf(lib));
+  });
+
+  it('a write that fails part way says part of the data was replaced, and names what', async () => {
+    const lib = await populated();
+    const json = ok(lib.exportAll());
+    let renames = 0;
+    const flaky = await open({ fs: { ...nodeFs, rename: (a, b) => (++renames > 1 ? Promise.reject(Object.assign(new Error('disk'), { code: 'EIO' })) : nodeFs.rename(a, b)) } });
+    const r = await flaky.replaceAll(json);
+    expect(code(r)).toBe('partly-replaced');
+    expect(r.ok ? '' : r.error.message).toContain('decks');
+  });
+
+  it('a save that fails on the very first store is a plain write-failed, because nothing was replaced', async () => {
+    const lib = await populated();
+    const json = ok(lib.exportAll());
+    const before = stateOf(lib);
+    const flaky = await open({ fs: { ...nodeFs, rename: () => Promise.reject(Object.assign(new Error('disk'), { code: 'EIO' })) } });
+    expect(code(await flaky.replaceAll(json))).toBe('write-failed');
+    expect(stateOf(await open())).toEqual(before);
+  });
+
+  it('a backup that cannot be made stops everything before any store is overwritten', async () => {
+    const lib = await populated();
+    const json = ok(lib.exportAll());
+    ok(await lib.createDeck('Added after the export'));
+    let blocked = false;
+    const guarded = await open({
+      fs: { ...nodeFs, readFile: (p) => (blocked && p.endsWith('settings.json') ? Promise.reject(Object.assign(new Error('locked'), { code: 'EPERM' })) : nodeFs.readFile(p)) },
+    });
+    const before = stateOf(guarded);
+    const files = filesOf();
+    blocked = true;
+    expect(code(await guarded.replaceAll(json))).toBe('write-failed');
+    expect(stateOf(guarded)).toEqual(before);
+    expect(filesOf()).toEqual(files);
+  });
+
+  it('many restores and resets in a row never push out the data that was there first', async () => {
+    const lib = await populated();
+    ok(await lib.resetAll());
+    for (let i = 0; i < 7; i++) {
+      ok(await lib.createDeck(`Scratch ${i}`));
+      ok(await lib.resetAll());
+    }
+    const kept = backupFiles().filter((f) => f.startsWith('decks.before-replace-'));
+    expect(kept.some((f) => fs.readFileSync(join(dir, 'backups', f), 'utf8').includes('French'))).toBe(true);
+  });
+
+  it('resetting a library that is already empty does not spend a backup on nothing', async () => {
+    const lib = await open();
+    ok(await lib.createDeck('One'));
+    ok(await lib.resetAll());
+    const count = backupFiles().length;
+    ok(await lib.resetAll());
+    expect(backupFiles()).toHaveLength(count);
+  });
+
+  it('restore and reset backups are not what a damaged file is repaired from', async () => {
+    const lib = await populated();
+    ok(await lib.resetAll());
+    fs.writeFileSync(join(dir, 'decks.json'), '{"half');
+    const reopened = await open();
+    expect(reopened.notices()).toEqual([expect.objectContaining({ store: 'decks', kind: 'recovered' })]);
+    expect(reopened.listDecks()).toEqual([]);
+  });
+
+  it('the committed v1 backup still imports', async () => {
+    const lib = await open();
+    ok(await lib.replaceAll(fs.readFileSync(FIXTURE, 'utf8')));
+    expect(lib.listDecks().map((d) => d.name)).toEqual(['French']);
+    expect(lib.listSessions()).toHaveLength(1);
+    expect(lib.getSettings()).toMatchObject({ cap: 3, preset: 'calm', onboarded: true });
+  });
+
+  it.runIf(process.env['WRITE_FIXTURES'] === '1')('regenerates the committed v1 backup (run once when the shape is meant to change)', async () => {
+    fs.mkdirSync(join(__dirname, '..', 'fixtures', 'backups'), { recursive: true });
+    fs.writeFileSync(FIXTURE, ok((await populated()).exportAll()));
   });
 });
 

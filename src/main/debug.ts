@@ -96,6 +96,8 @@ export function installDebug(deps: {
   escapeKey: EscapeKey;
   recorder: DebugRecorder;
   library: Library;
+  /** Makes the next backup open or save dialog use this path instead of showing a dialog, which a test cannot click. */
+  setNextDialogPath: (path: string) => void;
 }): void {
   (globalThis as { __barkDebug?: unknown }).__barkDebug = {
     body: () => deps.dogHost.body(),
@@ -125,6 +127,7 @@ export function installDebug(deps: {
     pressHotkey: (accelerator: string) => deps.recorder.press(accelerator),
     /** The last DEBUG_LOG_CAPACITY lines sent to the overlays, oldest first. */
     speechLog: () => deps.recorder.speechLog(),
+    setNextDialogPath: (path: string) => deps.setNextDialogPath(path),
     /** Sets sound (or any other setting) the way the tray does, so a test does not depend on what an earlier one left. */
     updateSettings: async (patch: Partial<Settings>) => {
       const r = await deps.library.updateSettings(patch);

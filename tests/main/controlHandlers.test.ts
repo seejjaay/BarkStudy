@@ -26,6 +26,13 @@ const files: FileAccess = {
     saved.push({ name, csv });
     return Promise.resolve({ path: `C:\\out\\${name}` });
   },
+  pickBackup: () => Promise.resolve({ ok: true, value: null }),
+  saveBackup: () => Promise.resolve(null),
+};
+// The settings operations have their own tests (settingsOps.test.ts); these are the quiet defaults.
+const quiet = {
+  platform: { loginItem: { get: () => ({ available: false, on: false }), set: () => undefined }, openApps: () => [], dataDir: 'C:/data', openLink: () => undefined, applyReducedMotion: () => undefined, version: '1.2.3', openPath: () => Promise.resolve(''), afterReplace: () => undefined, setPractice: () => undefined },
+  hotkeys: { leaveIt: { rebind: () => true }, bubble: { rebind: () => true } },
 };
 const call = <T = unknown>(op: string, args?: unknown) => h.handle(op, args) as Promise<T>;
 const ok = <T>(r: Result<T>): T => {
@@ -43,7 +50,13 @@ beforeEach(async () => {
   picked = { ok: true, value: null };
   lib = await createLibrary({ storage: createStorage(dir), newId: () => `id${++ids}` });
   session = createSessionController({ library: lib, seed: 1, publish: () => undefined });
-  h = createControlHandlers({ library: lib, session, files, status: () => ({ trackerDown, leaveItConflict: leaveItConflict, leaveItLabel: 'Ctrl+Alt+L' }) });
+  h = createControlHandlers({
+    library: lib,
+    session,
+    files,
+    status: () => ({ trackerDown, leaveItConflict: leaveItConflict, leaveItLabel: 'Ctrl+Alt+L' }),
+    ...quiet,
+  });
 });
 afterEach(() => {
   session.dispose();
@@ -201,7 +214,7 @@ describe('export', () => {
   it('cancelling the save dialog is a quiet success', async () => {
     const d = ok(await lib.importAsNewDeck('X', 'a,b'));
     const files2: FileAccess = { ...files, saveExport: () => Promise.resolve(null) };
-    const h2 = createControlHandlers({ library: lib, session, files: files2, status: () => ({ trackerDown: false, leaveItConflict: false, leaveItLabel: 'Ctrl+Alt+L' }) });
+    const h2 = createControlHandlers({ library: lib, session, files: files2, status: () => ({ trackerDown: false, leaveItConflict: false, leaveItLabel: 'Ctrl+Alt+L' }), ...quiet });
     expect(await h2.handle('deck:export', { id: d.deckId })).toEqual({ ok: true, value: null });
   });
 

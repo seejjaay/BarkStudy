@@ -12,11 +12,11 @@ import {
 } from '../shared/control';
 import { exportDeck as exportCsv, parseDeck } from '../shared/deckParse';
 import type { Card, Deck, DecksFile, GuiltTripRecord, HistoryFile, SessionRecord } from '../shared/model';
-import { DEFAULT_SETTINGS, fillSettings, type Settings } from '../shared/settings';
+import { DEFAULT_SETTINGS, checkSettings, fillSettings, normalizeExcluded, type Settings } from '../shared/settings';
 import { newCard } from '../shared/srs';
 import { isSettings } from '../shared/validate';
 import type { SessionSummary } from './engineHost';
-import type { ReadResult, Storage, StoreDef } from './storage/io';
+import { upgrade, type ReadResult, type Storage, type StoreDef } from './storage/io';
 import { decksStore, historyStore, settingsStore } from './storage/stores';
 
 /**
@@ -63,6 +63,12 @@ export interface Library {
   updateSettings: (patch: Partial<Settings>) => Promise<Result<Settings>>;
   /** What went wrong, or was quietly repaired, while opening. */
   notices: () => Notice[];
+  /** Every store as one JSON bundle. Refused while a store is unavailable, so a blank is never passed off as the user's data. */
+  exportAll: () => Result<string>;
+  /** Replaces every store with the bundle's. All three parts are checked before any file is touched, and each current file is copied to backups/ first. */
+  replaceAll: (json: string) => Promise<Result<void>>;
+  /** Replaces every store with its empty/default form, after copying the current files to backups/. */
+  resetAll: () => Promise<Result<void>>;
 }
 
 export interface LibraryOptions {
@@ -136,6 +142,104 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
     const run = slot.chain.then(job, job);
     slot.chain = run.catch(() => undefined);
     return run;
+  }
+
+
+  const asRecord = (v: unknown): Record<string, unknown> | null => (typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+
+  interface Everything {
+    decks: DecksFile;
+    settings: Settings;
+    history: HistoryFile;
+  }
+
+  function parseBackup(json: string): Result<Everything> {
+    const notBackup = (why: string) => fail('not-a-backup', why);
+    let v: unknown;
+    try {
+      v = JSON.parse(json);
+    } catch {
+      return notBackup('that is not a BarkStudy backup file');
+    }
+    const root = asRecord(v);
+    const stores = asRecord(root?.['stores']);
+    if (!root || !stores || root['app'] !== 'barkstudy' || root['kind'] !== 'backup') return notBackup('that is not a BarkStudy backup file');
+    const part = <T>(def: StoreDef<T>): Result<T> => {
+      const p = asRecord(stores[def.name]);
+      if (!p || typeof p['schemaVersion'] !== 'number' || !('data' in p)) return notBackup(`the ${def.name} part is missing from that backup`);
+      const u = upgrade(def, p['schemaVersion'], p['data']);
+      if (u.ok) return good(u.value);
+      return u.reason === 'newer-version'
+        ? fail('newer-version', `the ${def.name} part was saved by a newer BarkStudy`)
+        : notBackup(`the ${def.name} part of that backup is damaged`);
+    };
+    const d = part(decksStore);
+    if (!d.ok) return d;
+    const st = part(settingsStore);
+    if (!st.ok) return st;
+    const h = part(historyStore);
+    if (!h.ok) return h;
+    const filled = fillSettings(st.value);
+    const settingsValue: Settings = { ...filled, excludedApps: normalizeExcluded(filled.excludedApps) };
+    const problem = checkSettings(settingsValue);
+    if (problem !== null) return notBackup(`the settings in that backup are not usable: ${problem}`);
+    return good({ decks: d.value, settings: settingsValue, history: h.value });
+  }
+
+  /** Runs `job` after everything already queued for this store. */
+  function onChain<R>(slot: Slot<unknown>, job: () => Promise<R>): Promise<R> {
+    const run = slot.chain.then(job, job);
+    slot.chain = run.catch(() => undefined);
+    return run;
+  }
+
+  function backupSlot(slot: Slot<unknown>): Promise<Result<void>> {
+    return onChain(slot, async () => {
+      try {
+        await opts.storage.backup(slot.def);
+        return good(undefined);
+      } catch (e) {
+        return fail('write-failed', `could not back up ${slot.def.name}: ${messageOf(e)}`);
+      }
+    });
+  }
+
+  function replaceSlot<T>(slot: Slot<T>, value: T): Promise<Result<void>> {
+    return onChain(slot, async () => {
+      try {
+        await opts.storage.write(slot.def, value);
+      } catch (e) {
+        return fail('write-failed', messageOf(e));
+      }
+      slot.value = structuredClone(value);
+      slot.available = true;
+      for (let i = notices.length - 1; i >= 0; i--) if (notices[i]!.store === slot.def.name) notices.splice(i, 1);
+      return good(undefined);
+    });
+  }
+
+  async function applyAll(all: Everything): Promise<Result<void>> {
+    // Every backup comes first, so a file that cannot be copied stops things while nothing has been overwritten.
+    for (const slot of [decks, settings, hist] as Slot<unknown>[]) {
+      const saved = await backupSlot(slot);
+      if (!saved.ok) return fail('write-failed', `${saved.error.message}. Nothing was changed.`);
+    }
+    const done: string[] = [];
+    const steps: [string, () => Promise<Result<void>>][] = [
+      ['decks', () => replaceSlot(decks, all.decks)],
+      ['settings', () => replaceSlot(settings, all.settings)],
+      ['history', () => replaceSlot(hist, all.history)],
+    ];
+    for (const [name, run] of steps) {
+      const r = await run();
+      if (!r.ok) {
+        return done.length === 0
+          ? fail('write-failed', `${r.error.message}. Nothing was changed.`)
+          : fail('partly-replaced', `${r.error.message}; already replaced: ${done.join(', ')}. The old files are in the backups folder.`);
+      }
+      done.push(name);
+    }
+    return good(undefined);
   }
 
   function checkName(file: DecksFile, name: string, selfId?: string): { ok: true; name: string } | { ok: false; error: AppError } {
@@ -346,9 +450,31 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
           if (value !== undefined) next[key] = value;
         }
         if (!isSettings(next)) return fail('invalid-request', 'that setting is not usable');
-        Object.assign(draft, next);
+        const whole: Settings = { ...fillSettings(next), excludedApps: normalizeExcluded(next.excludedApps) };
+        const problem = checkSettings(whole);
+        if (problem !== null) return fail('invalid-request', problem);
+        Object.assign(draft, whole);
         return good(structuredClone(draft));
       }),
     notices: () => notices.map((n) => ({ ...n })),
+
+    exportAll: () => {
+      const unavailable = [decks, settings, hist].find((slot) => !slot.available);
+      if (unavailable) return fail('store-unavailable', `${unavailable.def.name} could not be read safely, so there is nothing trustworthy to export`);
+      const part = <T>(slot: Slot<T>) => ({ schemaVersion: slot.def.migrations.length + 1, data: slot.value });
+      return good(
+        JSON.stringify({
+          app: 'barkstudy',
+          kind: 'backup',
+          exportedAt: new Date(now()).toISOString(),
+          stores: { decks: part(decks), settings: part(settings), history: part(hist) },
+        }),
+      );
+    },
+    replaceAll: async (json) => {
+      const parsed = parseBackup(json);
+      return parsed.ok ? applyAll(parsed.value) : parsed;
+    },
+    resetAll: () => applyAll({ decks: decksStore.fallback(), settings: settingsStore.fallback(), history: historyStore.fallback() }),
   };
 }

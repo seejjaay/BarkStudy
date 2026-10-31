@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { DeckSummary, Result, SessionView, StartRequest } from '../../src/shared/control';
 import { makeIcon } from '../../src/main/icon';
-import type { Settings } from '../../src/shared/settings';
+import { DEFAULT_SETTINGS, type Settings } from '../../src/shared/settings';
 import {
   MAX_TRAY_DECKS,
   buildTrayMenu,
@@ -241,7 +241,7 @@ describe('runTrayAction', () => {
         }),
       },
       library: {
-        getSettings: () => ({ cap: 4, preset: 'classic', checkinMinMinutes: 7, checkinMaxMinutes: 21, excludedApps: [], leaveItHotkey: 'Ctrl+Alt+L', soundOn: true, volume: 0.4 }),
+        getSettings: () => ({ ...DEFAULT_SETTINGS, checkinMinMinutes: 7, checkinMaxMinutes: 21, excludedApps: [] }),
         updateSettings: vi.fn((patch: Partial<Settings>) => {
           calls.push(`settings:${JSON.stringify(patch)}`);
           return Promise.resolve((over.update ?? { ok: true, value: {} }) as Result<Settings>);

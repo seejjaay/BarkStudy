@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { seedOnboarded } from './helpers';
 
 // M4 acceptance: the escalation ladder, Esc, Leave it and the answer moods, watched through the debug surface with
 // BARKSTUDY_FAST_TUNING (check-in, escalation and guilt timings 100x shorter; laps and dig-in keep their real length).
@@ -140,6 +141,7 @@ const waitForLaps = () =>
 
 test.beforeEach(() => {
   userData = fs.mkdtempSync(join(os.tmpdir(), 'barkstudy-e2e-esc-'));
+  seedOnboarded(userData);
 });
 
 // Closing the app first means a failing test still exits in seconds, then the temp data goes.

@@ -1,5 +1,6 @@
 import * as fsp from 'node:fs/promises';
 import { join } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 
 /**
  * One JSON file per store under the user-data folder, written atomically (temp file, flush, rename), versioned with a
@@ -66,6 +67,8 @@ export interface Storage {
   read: <T>(def: StoreDef<T>) => Promise<ReadResult<T>>;
   /** Throws if `data` does not validate or the file cannot be written; the previous file is then untouched. */
   write: <T>(def: StoreDef<T>, data: T) => Promise<void>;
+  /** Copies the store's current file into backups/ (oldest beyond the keep limit are dropped) and leaves it in place. Nothing to copy is not an error. */
+  backup: <T>(def: StoreDef<T>) => Promise<void>;
 }
 
 export interface StorageOptions {
@@ -74,6 +77,8 @@ export interface StorageOptions {
   sleep?: (ms: number) => Promise<void>;
   /** Pre-migration backups (and corrupt-file copies) kept per store. Default 5. */
   keepBackups?: number;
+  /** Backups taken before a restore or reset (`backup()`), kept apart from the ones above so they are not pushed out by them. Default 20. */
+  keepReplaceBackups?: number;
 }
 
 interface Envelope {
@@ -98,11 +103,35 @@ function parseEnvelope(text: string): Envelope | null {
   return { schemaVersion: v['schemaVersion'] as number, data: v['data'] };
 }
 
+function migrate<T>(def: StoreDef<T>, env: Envelope): { ok: true; value: T } | { ok: false; detail: string } {
+  let data = env.data;
+  for (let v = env.schemaVersion; v <= def.migrations.length; v++) {
+    try {
+      data = def.migrations[v - 1]!(structuredClone(data));
+    } catch (e) {
+      return { ok: false, detail: `step v${v} to v${v + 1} failed: ${message(e)}` };
+    }
+  }
+  return def.validate(data) ? { ok: true, value: data } : { ok: false, detail: 'migrated data failed validation' };
+}
+
+
+/** Brings data written at `schemaVersion` up to what this app writes, for data that did not come from a store file (an imported backup). */
+export function upgrade<T>(def: StoreDef<T>, schemaVersion: number, data: unknown): { ok: true; value: T } | { ok: false; reason: 'newer-version' | 'invalid' } {
+  if (!Number.isInteger(schemaVersion) || schemaVersion < 1) return { ok: false, reason: 'invalid' };
+  const current = def.migrations.length + 1;
+  if (schemaVersion > current) return { ok: false, reason: 'newer-version' };
+  if (schemaVersion === current) return def.validate(data) ? { ok: true, value: data } : { ok: false, reason: 'invalid' };
+  const m = migrate(def, { schemaVersion, data });
+  return m.ok ? m : { ok: false, reason: 'invalid' };
+}
+
 export function createStorage(dir: string, opts: StorageOptions = {}): Storage {
   const fs = opts.fs ?? nodeFs;
   const now = opts.now ?? (() => Date.now());
   const sleep = opts.sleep ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
   const keep = opts.keepBackups ?? 5;
+  const keepReplace = opts.keepReplaceBackups ?? 20;
   const backupDir = join(dir, 'backups');
   const chains = new Map<string, Promise<unknown>>();
   let tmpSeq = 0;
@@ -140,14 +169,17 @@ export function createStorage(dir: string, opts: StorageOptions = {}): Storage {
     }
   }
 
-  async function listBackups(name: string, kind: 'v' | 'corrupt'): Promise<{ file: string; at: number }[]> {
+  type BackupKind = 'v' | 'corrupt' | 'replace';
+
+  async function listBackups(name: string, kind: BackupKind): Promise<{ file: string; at: number }[]> {
     let names: string[];
     try {
       names = await fs.readdir(backupDir);
     } catch {
       return [];
     }
-    const re = kind === 'v' ? new RegExp(`^${name}\\.v\\d+-(\\d+)\\.json$`) : new RegExp(`^${name}\\.corrupt-(\\d+)\\.json$`);
+    const pattern = { v: `^${name}\\.v\\d+-(\\d+)\\.json$`, corrupt: `^${name}\\.corrupt-(\\d+)\\.json$`, replace: `^${name}\\.before-replace-v\\d+-(\\d+)\\.json$` }[kind];
+    const re = new RegExp(pattern);
     return names
       .map((file) => ({ file, m: re.exec(file) }))
       .filter((x): x is { file: string; m: RegExpExecArray } => x.m !== null)
@@ -155,8 +187,8 @@ export function createStorage(dir: string, opts: StorageOptions = {}): Storage {
       .sort((a, b) => b.at - a.at);
   }
 
-  async function prune(name: string, kind: 'v' | 'corrupt'): Promise<void> {
-    for (const old of (await listBackups(name, kind)).slice(keep)) await fs.unlink(join(backupDir, old.file)).catch(() => undefined);
+  async function prune(name: string, kind: BackupKind): Promise<void> {
+    for (const old of (await listBackups(name, kind)).slice(kind === 'replace' ? keepReplace : keep)) await fs.unlink(join(backupDir, old.file)).catch(() => undefined);
   }
 
   /** Copies `from` into backups/ under a name that sorts by time; never overwrites an existing backup. */
@@ -170,18 +202,6 @@ export function createStorage(dir: string, opts: StorageOptions = {}): Storage {
         if (code(e) !== 'EEXIST') throw e;
       }
     }
-  }
-
-  function migrate<T>(def: StoreDef<T>, env: Envelope): { ok: true; value: T } | { ok: false; detail: string } {
-    let data = env.data;
-    for (let v = env.schemaVersion; v <= def.migrations.length; v++) {
-      try {
-        data = def.migrations[v - 1]!(structuredClone(data));
-      } catch (e) {
-        return { ok: false, detail: `step v${v} to v${v + 1} failed: ${message(e)}` };
-      }
-    }
-    return def.validate(data) ? { ok: true, value: data } : { ok: false, detail: 'migrated data failed validation' };
   }
 
   async function recover<T>(def: StoreDef<T>, reason: 'unparseable' | 'invalid-data'): Promise<ReadResult<T>> {
@@ -259,6 +279,20 @@ export function createStorage(dir: string, opts: StorageOptions = {}): Storage {
 
   return {
     read: (def) => serial(def.name, () => readUnlocked(def)),
+    backup: (def) =>
+      serial(def.name, async () => {
+        const text = await fs.readFile(fileOf(def.name)).catch((e: unknown) => {
+          if (code(e) === 'ENOENT') return null;
+          throw e;
+        });
+        if (text === null) return;
+        const env = parseEnvelope(text);
+        // Nothing to keep when the file only holds the empty starting state: it would spend a slot on nothing.
+        if (env && env.schemaVersion === def.migrations.length + 1 && isDeepStrictEqual(env.data, def.fallback())) return;
+        const version = env?.schemaVersion ?? def.migrations.length + 1;
+        await copyToBackups(fileOf(def.name), (at) => `${def.name}.before-replace-v${version}-${stamp(at)}.json`);
+        await prune(def.name, 'replace');
+      }),
     write: (def, data) =>
       serial(def.name, async () => {
         if (!def.validate(data)) throw new Error(`invalid data for store "${def.name}"`);

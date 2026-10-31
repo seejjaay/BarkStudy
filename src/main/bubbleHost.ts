@@ -1,4 +1,5 @@
-import { BUBBLE_HOTKEY, isSelfGrade, isTypedAnswer, type BubbleState } from '../shared/bubble';
+import { sameAccelerator } from '../shared/accelerator';
+import { isSelfGrade, isTypedAnswer, type BubbleState } from '../shared/bubble';
 import { IPC } from '../shared/ipc';
 import type { SessionController } from './session';
 
@@ -16,6 +17,8 @@ export interface BubbleHostDeps {
     setFocus: (sender: unknown, on: boolean) => void;
   };
   hotkeys: { register: (accelerator: string, onPress: () => void) => boolean; unregister: (accelerator: string) => void };
+  /** The shortcut to hold while a question is waiting, read each time so a rebinding in settings takes effect. */
+  accelerator: () => string;
 }
 
 export interface BubbleHost {
@@ -25,12 +28,14 @@ export interface BubbleHost {
   handle: (channel: string, sender: unknown, payload: unknown) => unknown;
   /** False while the hotkey could not be registered because another app owns it. */
   readonly hotkeyOk: boolean;
+  /** Moves the shortcut. While a question is waiting it swaps the live one; otherwise it only checks the new one is free. False (and nothing changed) if another app owns it. */
+  rebind: (accelerator: string) => boolean;
   dispose: () => void;
 }
 
 export function createBubbleHost(deps: BubbleHostDeps): BubbleHost {
   const { session, overlays, hotkeys } = deps;
-  let registered = false;
+  let held: string | null = null;
   let conflict = false;
   let last: BubbleState | null = null;
 
@@ -40,13 +45,14 @@ export function createBubbleHost(deps: BubbleHostDeps): BubbleHost {
   }
 
   function syncHotkey(wanted: boolean): void {
-    if (wanted && !registered) {
-      registered = hotkeys.register(BUBBLE_HOTKEY, onHotkey);
-      conflict = !registered;
-      if (conflict) console.error(`${BUBBLE_HOTKEY} is taken by another app; click Pandesal to answer instead`);
-    } else if (!wanted && registered) {
-      hotkeys.unregister(BUBBLE_HOTKEY);
-      registered = false;
+    if (wanted && held === null) {
+      const accelerator = deps.accelerator();
+      held = hotkeys.register(accelerator, onHotkey) ? accelerator : null;
+      conflict = held === null;
+      if (conflict) console.error(`${accelerator} is taken by another app; click Pandesal to answer instead`);
+    } else if (!wanted && held !== null) {
+      hotkeys.unregister(held);
+      held = null;
     }
     if (!wanted) conflict = false;
   }
@@ -84,6 +90,19 @@ export function createBubbleHost(deps: BubbleHostDeps): BubbleHost {
 
     get hotkeyOk() {
       return !conflict;
+    },
+
+    rebind(accelerator) {
+      if (held !== null && sameAccelerator(held, accelerator)) return true;
+      if (!hotkeys.register(accelerator, onHotkey)) return false;
+      if (held === null) {
+        hotkeys.unregister(accelerator); // nothing is waiting, so this was only a check
+        return true;
+      }
+      hotkeys.unregister(held);
+      held = accelerator;
+      conflict = false;
+      return true;
     },
 
     dispose() {

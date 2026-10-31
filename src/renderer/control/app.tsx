@@ -2,12 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LibrarySnapshot, Notice, SessionView } from '../../shared/control';
 import { api } from './api';
 import { DecksView } from './decks';
+import { AboutPage } from './about';
 import { HistoryView } from './history';
+import { Onboarding } from './onboarding';
+import { shouldOnboard } from './onboardingFlow';
+import { SettingsPage } from './settings';
 import { badgeFor } from './sessionState';
 import { StudyView } from './study';
 import { ToastProvider } from './toast';
 
-type View = 'study' | 'decks' | 'history';
+type View = 'study' | 'decks' | 'history' | 'settings' | 'about';
 type Load = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; snapshot: LibrarySnapshot };
 
 const NAV: { id: View; label: string }[] = [
@@ -15,7 +19,12 @@ const NAV: { id: View; label: string }[] = [
   { id: 'decks', label: 'Decks' },
   { id: 'history', label: 'History' },
 ];
-const TITLES: Record<View, string> = { study: 'Study', decks: 'Decks', history: 'History' };
+// Below the main sections, so they are one gesture away from everywhere but never in the way.
+const NAV_FOOT: { id: View; label: string }[] = [
+  { id: 'settings', label: 'Settings' },
+  { id: 'about', label: 'About' },
+];
+const TITLES: Record<View, string> = { study: 'Study', decks: 'Decks', history: 'History', settings: 'Settings', about: 'About' };
 
 const NOTICE_TEXT: Record<Notice['kind'], string> = {
   recovered: 'A saved file was damaged. The damaged copy was set aside and the newest good backup was used instead.',
@@ -38,6 +47,11 @@ function Shell() {
   const [session, setSession] = useState<SessionView>({ phase: 'idle' });
   const [trackerDown, setTrackerDown] = useState(false);
   const [leaveIt, setLeaveIt] = useState({ conflict: false, label: 'Ctrl+Alt+L' });
+  // Bumped whenever main reports a status change, so the settings page re-reads what a shortcut conflict or restore changed.
+  const [statusTick, setStatusTick] = useState(0);
+  // Each Leave it press main reports while the onboarding practice step is up, and whether setup was reopened from About.
+  const [presses, setPresses] = useState(0);
+  const [setupAgain, setSetupAgain] = useState(false);
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [studyDeckId, setStudyDeckId] = useState<string | null>(null);
   const sawEvent = useRef(false);
@@ -57,9 +71,12 @@ function Shell() {
     api.onEvent((e) => {
       sawEvent.current = true;
       if (e.type === 'session') setSession(e.view);
-      else {
+      else if (e.type === 'status') {
         setTrackerDown(e.trackerDown);
         setLeaveIt({ conflict: e.leaveItConflict, label: e.leaveItLabel });
+        setStatusTick((n) => n + 1);
+      } else {
+        setPresses((n) => n + 1);
       }
     });
     void api.call('session:view', undefined).then((v) => {
@@ -77,6 +94,25 @@ function Shell() {
   useEffect(() => {
     document.title = `${TITLES[view]} · BarkStudy`;
   }, [view]);
+
+  const snapshot = load.status === 'ready' ? load.snapshot : null;
+  if (setupAgain || shouldOnboard(load, snapshot)) {
+    return snapshot ? (
+      <Onboarding
+        snapshot={snapshot}
+        leaveIt={leaveIt}
+        presses={presses}
+        again={setupAgain}
+        onFinished={async (deckId) => {
+          setStudyDeckId(deckId);
+          setView('study');
+          await refresh();
+          setSetupAgain(false);
+        }}
+        onCancel={() => setSetupAgain(false)}
+      />
+    ) : null;
+  }
 
   const notices = load.status === 'ready' ? load.snapshot.notices.filter((n) => !dismissed.has(`${n.store}:${n.kind}`)) : [];
 
@@ -102,6 +138,15 @@ function Shell() {
             </li>
           ))}
         </ul>
+        <ul className="nav-foot">
+          {NAV_FOOT.map((n) => (
+            <li key={n.id}>
+              <button type="button" className="nav-item" aria-current={view === n.id ? 'page' : undefined} onClick={() => setView(n.id)}>
+                {n.label}
+              </button>
+            </li>
+          ))}
+        </ul>
       </nav>
 
       <main id="main" className="main" tabIndex={-1}>
@@ -114,8 +159,10 @@ function Shell() {
           <div className="banner banner-warn" role="status">
             <span>
               <strong>{leaveIt.label} is used by another app,</strong> so Leave it won&apos;t work from the keyboard. You can still pause from the tray icon or the Study page.
-              Choosing a different shortcut arrives with Settings.
             </span>
+            <button type="button" className="btn btn-quiet" onClick={() => setView('settings')}>
+              Choose another shortcut
+            </button>
           </div>
         )}
         {notices.map((n) => (
@@ -173,6 +220,8 @@ function Shell() {
           />
         )}
         {load.status === 'ready' && view === 'history' && <HistoryView snapshot={load.snapshot} />}
+        {load.status === 'ready' && view === 'settings' && <SettingsPage reloadKey={statusTick} onDataChanged={() => void refresh()} />}
+        {load.status === 'ready' && view === 'about' && <AboutPage version={load.snapshot.version} onRunSetup={() => setSetupAgain(true)} />}
       </main>
     </div>
   );

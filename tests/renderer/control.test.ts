@@ -29,9 +29,12 @@ describe('words', () => {
     const codes: ErrorCode[] = [
       'invalid-name', 'duplicate-name', 'not-found', 'already-exists', 'no-valid-rows', 'store-unavailable', 'write-failed',
       'empty-deck', 'already-running', 'not-running', 'invalid-request', 'duplicate-card', 'invalid-card', 'deck-in-use',
-      'file-unreadable', 'file-too-large',
+      'file-unreadable', 'file-too-large', 'not-a-backup', 'newer-version', 'hotkey-taken', 'hotkey-invalid', 'session-running', 'partly-replaced',
     ];
     expect(Object.keys(ERROR_TEXT).sort()).toEqual([...codes].sort());
+    // After a partial restore the old files are the user's way back, so the message must point at them.
+    expect(ERROR_TEXT['partly-replaced']).toMatch(/backups folder/);
+    expect(ERROR_TEXT['partly-replaced']).not.toMatch(/nothing was changed/i);
     const reasons: SkipReason[] = ['no-separator', 'empty-front', 'empty-back', 'header-row'];
     expect(Object.keys(SKIP_TEXT).sort()).toEqual([...reasons].sort());
     for (const t of [...Object.values(ERROR_TEXT), ...Object.values(SKIP_TEXT)]) expect(t.length).toBeGreaterThan(5);
