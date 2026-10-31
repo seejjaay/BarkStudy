@@ -65,6 +65,16 @@ describe('normalizeExcluded', () => {
   it('lower-cases, trims, drops blanks and duplicates, strips folders', () => {
     expect(normalizeExcluded(['A.EXE', ' a.exe ', 'b.exe', '', 'C:\\Games\\Foo.EXE'])).toEqual(['a.exe', 'b.exe', 'foo.exe']);
   });
+  it('is not quadratic: 50,000 entries, mostly repeats in mixed case, take under 200 ms', () => {
+    const many = Array.from({ length: 50_000 }, (_, i) => (i % 2 === 0 ? ` App${i % 20_000}.EXE ` : `app${i % 20_000}.exe`));
+    const t0 = performance.now();
+    const out = normalizeExcluded(many);
+    const elapsed = performance.now() - t0;
+    expect(out).toHaveLength(20_000);
+    expect(out[0]).toBe('app0.exe');
+    expect(out.every((n) => n === n.toLowerCase() && n === n.trim())).toBe(true);
+    expect(elapsed).toBeLessThan(200);
+  });
 });
 
 describe('repairSettings', () => {
