@@ -106,10 +106,10 @@ export function buildDiagnostics(input: DiagnosticsInput, maxChars = MAX_DIAGNOS
   const keep = largestFit(total, (n) => build(n, input.engine).length <= maxChars);
   if (keep >= 0) return build(keep, input.engine);
 
-  // ...then the oldest engine entries, with every problem gone.
+  // ...then the newest engine entries, with every problem gone. The log keeps its start (replay runs forward from startState), so what is left still replays.
   const log = input.engine;
   if (log === null) return build(0, null);
-  const trimmed = (n: number): EngineLog => ({ ...log, truncated: true, entries: log.entries.slice(log.entries.length - n) });
+  const trimmed = (n: number): EngineLog => ({ ...log, truncated: true, entries: log.entries.slice(0, n) });
   const kept = Math.max(0, largestFit(log.entries.length, (n) => build(0, trimmed(n)).length <= maxChars));
   return build(0, trimmed(kept));
 }

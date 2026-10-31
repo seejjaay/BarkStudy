@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createEngine } from '../../src/engine/engine';
-import { ENGINE_LOG_FENCE, extractEngineLog, replayLog, type EngineLog, type LogEntry } from '../../src/engine/replay';
+import { ENGINE_LOG_FENCE, extractEngineLog, replayLog, toEvents, type EngineLog, type LogEntry } from '../../src/engine/replay';
+import type { Action } from '../../src/engine/types';
 import { DEFAULT_TUNING } from '../../src/engine/tuning';
 import { buildDiagnostics, scrub, type DiagnosticsInput } from '../../src/main/diagnostics';
 import { createEngineHost, type HostSink } from '../../src/main/engineHost';
@@ -184,7 +185,7 @@ describe('size cap', () => {
     expect(text).toMatch(/older problems? left out/);
   });
 
-  it('once the problems are all gone, trims the log oldest first and marks it truncated', () => {
+  it('once the problems are all gone, trims the log from its end and marks it truncated', () => {
     const log = bigLog();
     const text = buildDiagnostics(input({ engine: log }));
     expect(text.length).toBeLessThanOrEqual(60_000);
@@ -194,7 +195,57 @@ describe('size cap', () => {
     expect(back!.truncated).toBe(true);
     expect(back!.entries.length).toBeGreaterThan(0);
     expect(back!.entries.length).toBeLessThan(log.entries.length);
-    expect(back!.entries.at(-1)).toEqual(log.entries.at(-1));
+    expect(back!.entries).toEqual(log.entries.slice(0, back!.entries.length));
+    expect(back!.startState).toEqual(log.startState);
+  });
+
+  it('a capped bundle from a real host log still replays, and gives the same actions as the run it was cut from', () => {
+    vi.useFakeTimers();
+    try {
+      const actions: Action[] = [];
+      const sink = new Proxy({}, { get: () => () => undefined }) as unknown as HostSink;
+      const record: HostSink = {
+        ...sink,
+        showCard: () => void actions.push({ type: 'SHOW_FLASHCARD' }),
+        hideCard: () => undefined,
+        say: (line, params) => void actions.push(params ? { type: 'SAY', line, params } : { type: 'SAY', line }),
+        expression: (name) => void actions.push({ type: 'SET_EXPRESSION', name }),
+        walkTo: () => void actions.push({ type: 'WALK_TO', windowId: 1 }),
+        effect: (a) => void actions.push('windowId' in a ? { ...a, windowId: 1 } : a),
+        treat: () => void actions.push({ type: 'AWARD_TREAT' }),
+        guiltTrip: (waitedMs) => void actions.push({ type: 'RECORD_GUILT_TRIP', waitedMs }),
+      };
+      const host = createEngineHost({ seed: 31, sink: record });
+      host.setActiveWindow(5);
+      host.start({ cards: [newCard('c1', 'front', 'back', 0)], cap: 4, preset: 'classic', checkinMinMinutes: 1, checkinMaxMinutes: 1 });
+      // Every busy flip is its own entry and breaks up the merged ticks, so this log is thousands of entries long.
+      for (let i = 0; i < 2_000; i++) {
+        host.setBusy(i % 2 === 0);
+        vi.advanceTimersByTime(250);
+      }
+      host.end();
+      const full = host.diagnostics()!;
+      host.dispose();
+      expect(JSON.stringify(full).length).toBeGreaterThan(100_000);
+
+      const bundle = buildDiagnostics(input({ engine: full }));
+      expect(bundle.length).toBeLessThanOrEqual(60_000);
+      const back = extractEngineLog(bundle)!;
+      expect(back.truncated).toBe(true);
+      expect(back.entries.length).toBeGreaterThan(0);
+      expect(back.entries.length).toBeLessThan(full.entries.length);
+      expect(back.entries).toEqual(full.entries.slice(0, back.entries.length));
+
+      const replayed = replayLog(back);
+      expect(replayed.violation).toBeNull();
+      const steps = toEvents(back).length;
+      expect(replayed.actions).toEqual(replayLog(full).actions.slice(0, steps));
+      const flat = replayed.actions.flat();
+      expect(flat.length).toBeGreaterThan(0);
+      expect(actions.slice(0, flat.length)).toEqual(flat);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not touch a small bundle', () => {
