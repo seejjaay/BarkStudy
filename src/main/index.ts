@@ -11,7 +11,7 @@ import { IPC, type SoundCue } from '../shared/ipc';
 import { createBubbleHost } from './bubbleHost';
 import { createControlHandlers } from './controlHandlers';
 import { createControlWindow } from './controlWindow';
-import type { DiagnosticsInput } from './diagnostics';
+import { accountName, type DiagnosticsInput } from './diagnostics';
 import { createDebugRecorder, installDebug, type Hotkeys } from './debug';
 import { createDogHost } from './dogHost';
 import { createEscapeKey } from './escapeKey';
@@ -268,7 +268,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
           problems: log.tail(50, 'warn'),
           engine: studySession.diagnostics(),
           home: homedir(),
-          user: userInfo().username,
+          user: accountName(() => userInfo().username, homedir()),
         };
       },
       copyText: (text) => clipboard.writeText(text),

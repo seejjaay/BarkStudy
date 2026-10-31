@@ -3,7 +3,7 @@ import { createEngine } from '../../src/engine/engine';
 import { ENGINE_LOG_FENCE, extractEngineLog, replayLog, toEvents, type EngineLog, type LogEntry } from '../../src/engine/replay';
 import type { Action } from '../../src/engine/types';
 import { DEFAULT_TUNING } from '../../src/engine/tuning';
-import { buildDiagnostics, scrub, type DiagnosticsInput } from '../../src/main/diagnostics';
+import { accountName, buildDiagnostics, scrub, type DiagnosticsInput } from '../../src/main/diagnostics';
 import { createEngineHost, type HostSink } from '../../src/main/engineHost';
 import { DEFAULT_SETTINGS } from '../../src/shared/settings';
 import { newCard } from '../../src/shared/srs';
@@ -143,6 +143,31 @@ describe('scrub', () => {
     expect(scrub('hello CJ Nicko Rosales!', HOME, USER)).toBe('hello <user>!');
   });
 
+  it('catches JSON-escaped paths, where every backslash is doubled', () => {
+    expect(scrub('{"path":"C:\\\\Users\\\\CJNICK~1\\\\AppData"}', HOME, USER)).toBe('{"path":"%USERPROFILE%\\\\AppData"}');
+    // The account name here is not the folder name, so only the home pass can save it.
+    const out = scrub('open C:\\\\Users\\\\CJ Nicko Rosales\\\\x failed', HOME, 'rosal');
+    expect(out).toBe('open %USERPROFILE%\\\\x failed');
+    expect(scrub('file:///C://Users//CJNICK~1/x', HOME, USER)).toBe('file:///%USERPROFILE%/x');
+  });
+
+  it('does not leave half of a profile folder name that has a space', () => {
+    const out = scrub('D:\\Users\\Ann Lee\\x', 'C:\\Users\\Ann Lee', 'ann');
+    expect(out).toBe('%USERPROFILE%\\x');
+    expect(out).not.toMatch(/Ann|Lee/);
+    expect(scrub('D:\\\\Users\\\\Ann Lee\\\\x', 'C:\\Users\\Ann Lee', 'ann')).toBe('%USERPROFILE%\\\\x');
+  });
+
+  it('scrubs the profile folder name too when the account name is different', () => {
+    expect(scrub('hello CJ Nicko Rosales!', HOME, 'rosal')).toBe('hello <user>!');
+    expect(scrub('hello rosal!', HOME, 'rosal')).toBe('hello <user>!');
+    expect(scrub('D:\\Users\\CJ Nicko Rosales\\x', HOME, 'rosal')).toBe('%USERPROFILE%\\x');
+  });
+
+  it('does not use a profile folder name shorter than three characters', () => {
+    expect(scrub('go to the ab shop', 'C:\\Users\\ab', 'someone')).toBe('go to the ab shop');
+  });
+
   it('matches the name as a whole word only', () => {
     expect(scrub('cjay and cj', 'C:\\Users\\cj', 'cj')).toBe('cjay and <user>');
     expect(scrub('Nick-nicknames', 'C:\\Users\\Nick', 'Nick')).toBe('<user>-nicknames');
@@ -161,6 +186,21 @@ describe('scrub', () => {
     );
     expect(text.toLowerCase()).not.toContain('nicko');
     expect(text.toLowerCase()).not.toContain('rosales');
+  });
+});
+
+describe('accountName', () => {
+  it('uses the name Windows reports', () => {
+    expect(accountName(() => 'rosal', HOME)).toBe('rosal');
+  });
+
+  it('falls back to the profile folder name when reading it throws, or it is blank', () => {
+    const boom = (): string => {
+      throw Object.assign(new Error('uv_os_get_passwd returned ENOENT'), { code: 'ERR_SYSTEM_ERROR' });
+    };
+    expect(accountName(boom, HOME)).toBe('CJ Nicko Rosales');
+    expect(accountName(() => '  ', 'C:\\Users\\Ann Lee\\')).toBe('Ann Lee');
+    expect(accountName(boom, '')).toBe('');
   });
 });
 

@@ -26,20 +26,37 @@ export const MAX_DIAGNOSTICS_CHARS = 60_000;
 /** One runaway message must not crowd out the rest. */
 const MAX_PROBLEM_CHARS = 2_000;
 
-/** The text of `name` as a pattern: either slash, and a space written plainly or as `%20` (a file URL). */
+/** The text of `name` as a pattern: any run of slashes of either kind (JSON-escaped paths double them), and a space written plainly or as `%20` (a file URL). */
 function looseSource(name: string): string {
   return [...name.replace(/[\\/]+$/, '')]
-    .map((ch) => (ch === '\\' || ch === '/' ? '[\\\\/]' : ch === ' ' ? '(?: |%20)' : ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+    .map((ch) => (ch === '\\' || ch === '/' ? '[\\\\/]+' : ch === ' ' ? '(?: |%20)' : ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
     .join('');
+}
+
+/** The last folder of a path, in either slash style. */
+const folderName = (path: string): string => path.split(/[\\/]+/).filter((p) => p !== '').pop() ?? '';
+
+/** The account name for a bundle: what Windows reports, or the profile folder's name when it will not say (`os.userInfo()` throws on some accounts). */
+export function accountName(read: () => string, home: string): string {
+  try {
+    const name = read();
+    if (name.trim() !== '') return name;
+  } catch {
+    // Fall through to the folder name.
+  }
+  return folderName(home);
 }
 
 /** Takes the home folder and the account name out of `text`. */
 export function scrub(text: string, home: string, user: string): string {
   let out = text;
   if (home.trim() !== '') out = out.replace(new RegExp(looseSource(home), 'gi'), () => '%USERPROFILE%');
-  out = out.replace(/[A-Za-z]:[\\/]Users[\\/][^\\/\s'"]+/gi, () => '%USERPROFILE%');
-  if (user.trim() !== '') out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}_])${looseSource(user)}(?![\\p{L}\\p{N}_])`, 'giu'), () => '<user>');
-  return out;
+  // The account name and the profile folder's name are not always the same (a Microsoft account), and either can have a
+  // space, which the generic pattern below would stop at. The longer goes first so a shorter one cannot cut it in two.
+  const folder = folderName(home);
+  const names = [user, folder.length >= 3 ? folder : ''].filter((n) => n.trim() !== '').sort((a, b) => b.length - a.length);
+  for (const name of names) out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}_])${looseSource(name)}(?![\\p{L}\\p{N}_])`, 'giu'), () => '<user>');
+  return out.replace(/[A-Za-z]:[\\/]+Users[\\/]+[^\\/\s'"]+/gi, () => '%USERPROFILE%');
 }
 
 const yesNo = (v: boolean): string => (v ? 'yes' : 'no');
