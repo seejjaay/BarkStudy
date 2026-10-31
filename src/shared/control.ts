@@ -151,7 +151,7 @@ export interface LibrarySnapshot {
 /** The settings that `settings:update` may change. Shortcuts have their own operation (they must be bound first) and `onboarded` is set by finishing onboarding. */
 export type SettingsPatch = Partial<Omit<Settings, 'leaveItHotkey' | 'bubbleHotkey' | 'onboarded'>>;
 
-export type LinkId = 'repo' | 'releases' | 'license';
+export type LinkId = 'repo' | 'releases' | 'license' | 'new-issue';
 
 export interface LoginItemState {
   /** False where start-with-Windows is not offered (a development run, not the installed app). */
@@ -215,6 +215,10 @@ export interface ControlOps {
   'settings:hotkey': [{ which: 'leaveIt' | 'bubble'; accelerator: string }, Result<Settings>];
   'settings:login-item': [{ on: boolean }, Result<LoginItemState>];
   'link:open': [{ id: LinkId }, Result<void>];
+  /** Builds the diagnostics bundle (versions, counts, the engine log; paths and names scrubbed), keeps it in main and returns it for the preview. */
+  'diagnostics:get': [void, string];
+  /** Puts the text `diagnostics:get` last returned on the clipboard. Never takes text from the renderer; `not-found` if there is none yet. */
+  'diagnostics:copy': [void, Result<void>];
   'data:open-folder': [void, Result<void>];
   /** Main opens the save dialog. `null` inside `ok` means the user cancelled. */
   'data:export-all': [void, Result<{ path: string } | null>];
@@ -257,6 +261,8 @@ export const OP_NAMES: readonly OpName[] = [
   'settings:hotkey',
   'settings:login-item',
   'link:open',
+  'diagnostics:get',
+  'diagnostics:copy',
   'data:open-folder',
   'data:export-all',
   'data:import-all',

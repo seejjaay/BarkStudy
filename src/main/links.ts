@@ -8,6 +8,7 @@ export const LINKS: Record<LinkId, string> = {
   repo: 'https://github.com/seejjaay/BarkStudy',
   releases: 'https://github.com/seejjaay/BarkStudy/releases',
   license: 'https://github.com/seejjaay/BarkStudy/blob/main/LICENSE',
+  'new-issue': 'https://github.com/seejjaay/BarkStudy/issues/new',
 };
 
 /** The address for a link id, or null for anything that is not one of ours. */

@@ -7,6 +7,7 @@ import { createLibrary, type Library } from '../../src/main/library';
 import { createSessionController, type SessionController } from '../../src/main/session';
 import { createStorage } from '../../src/main/storage/io';
 import type { LibrarySnapshot, Result } from '../../src/shared/control';
+import { sampleDiagnosticsInput } from './diagnosticsFixture';
 
 let dir: string;
 let lib: Library;
@@ -31,7 +32,7 @@ const files: FileAccess = {
 };
 // The settings operations have their own tests (settingsOps.test.ts); these are the quiet defaults.
 const quiet = {
-  platform: { loginItem: { get: () => ({ available: false, on: false }), set: () => undefined }, openApps: () => [], dataDir: 'C:/data', openLink: () => undefined, applyReducedMotion: () => undefined, version: '1.2.3', openPath: () => Promise.resolve(''), afterReplace: () => undefined, setPractice: () => undefined },
+  platform: { loginItem: { get: () => ({ available: false, on: false }), set: () => undefined }, openApps: () => [], dataDir: 'C:/data', openLink: () => undefined, applyReducedMotion: () => undefined, version: '1.2.3', openPath: () => Promise.resolve(''), afterReplace: () => undefined, setPractice: () => undefined, diagnostics: () => sampleDiagnosticsInput(), copyText: () => Promise.resolve() },
   hotkeys: { leaveIt: { rebind: () => true }, bubble: { rebind: () => true } },
 };
 const call = <T = unknown>(op: string, args?: unknown) => h.handle(op, args) as Promise<T>;

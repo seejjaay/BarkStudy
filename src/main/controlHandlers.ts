@@ -21,6 +21,7 @@ import { SAMPLE_DECK } from '../shared/sampleDeck';
 import type { Settings } from '../shared/settings';
 import { isDecksFile } from '../shared/validate';
 import type { Grade } from '../shared/srs';
+import { buildDiagnostics, type DiagnosticsInput } from './diagnostics';
 import type { Library } from './library';
 import { MAX_DECK_NAME } from './library';
 import { resolveLink } from './links';
@@ -71,6 +72,10 @@ export interface PlatformAccess {
   afterReplace: () => void;
   /** Turns the onboarding Leave it practice on or off. */
   setPractice: (on: boolean) => void;
+  /** Gathers what the diagnostics bundle reports, fresh each time. */
+  diagnostics: () => DiagnosticsInput;
+  /** Puts text on the clipboard; rejects if it could not be written. */
+  copyText: (text: string) => Promise<void>;
 }
 
 /** The global shortcuts that can be moved. `rebind` returns false, with the old shortcut still working, if another app owns the new one. */
@@ -238,6 +243,19 @@ export function createControlHandlers(opts: ControlHandlerOptions): ControlHandl
     return { settings: library.getSettings(), loginItem: platform.loginItem.get(), openApps: platform.openApps(), dataDir: platform.dataDir };
   }
 
+  /** The bundle the user last previewed; `diagnostics:copy` writes this, so what is copied is what was read. */
+  let diagnosticsText: string | null = null;
+
+  async function copyDiagnostics(): Promise<unknown> {
+    if (diagnosticsText === null) return fail('not-found', 'there are no diagnostics to copy yet');
+    try {
+      await platform.copyText(diagnosticsText);
+      return { ok: true, value: undefined };
+    } catch (e) {
+      return fail('write-failed', e instanceof Error ? e.message : String(e));
+    }
+  }
+
   const running = () => session.view().phase === 'running';
   const RUNNING = fail('session-running', 'a session is running');
 
@@ -401,6 +419,11 @@ export function createControlHandlers(opts: ControlHandlerOptions): ControlHandl
           const req = parseFinish(args);
           return req ? finishOnboarding(req) : bad();
         }
+        case 'diagnostics:get':
+          diagnosticsText = buildDiagnostics(platform.diagnostics());
+          return diagnosticsText;
+        case 'diagnostics:copy':
+          return copyDiagnostics();
         case 'link:open': {
           const url = resolveLink(a?.['id']);
           if (url === null) return bad();

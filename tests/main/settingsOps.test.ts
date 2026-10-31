@@ -9,6 +9,7 @@ import { createSessionController, type SessionController } from '../../src/main/
 import { createStorage } from '../../src/main/storage/io';
 import type { Result, SettingsView } from '../../src/shared/control';
 import type { Settings } from '../../src/shared/settings';
+import { sampleDiagnosticsInput } from './diagnosticsFixture';
 
 let dir: string;
 let lib: Library;
@@ -69,6 +70,8 @@ beforeEach(async () => {
       openPath: () => Promise.resolve(''),
       afterReplace: () => undefined,
       setPractice: () => undefined,
+      diagnostics: () => sampleDiagnosticsInput(),
+      copyText: () => Promise.resolve(),
     },
     hotkeys: {
       leaveIt: {

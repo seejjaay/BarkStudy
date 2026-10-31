@@ -116,3 +116,25 @@ test('reset is refused while a session is running, and nothing is lost', async (
   await nav('Decks').click();
   await expect(page.locator('.row-title', { hasText: 'Busy' })).toBeVisible();
 });
+
+test('About, Copy diagnostics shows the bundle with the engine log and none of the user, their folders or their decks', async () => {
+  await open();
+  await waitForDebug(app!);
+  const made = await control<{ ok: boolean; value: { deckId: string } }>(page, 'deck:import-text', { deckId: null, name: 'Quiet Hollow Deck', text: 'zebra capital,zebra answer' });
+  expect(made.ok).toBe(true);
+  await control(page, 'session:start', { deckId: made.value.deckId, topic: 'volcano topic', checkinMinMinutes: 5, checkinMaxMinutes: 15 });
+  await nav('About').click();
+  await page.getByRole('button', { name: 'Copy diagnostics…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Diagnostics' });
+  const text = dialog.getByRole('textbox', { name: 'Diagnostics to paste into a bug report' });
+  await expect(text).toHaveValue(/```barkstudy-engine-log/);
+  const bundle = await text.inputValue();
+  expect(bundle).toContain('## Recent problems');
+  for (const secret of [userData, os.homedir(), os.userInfo().username, 'Quiet Hollow', 'zebra', 'volcano']) {
+    expect(bundle.toLowerCase()).not.toContain(secret.toLowerCase());
+  }
+  await dialog.getByRole('button', { name: 'Copy', exact: true }).click();
+  await expect(toast('Diagnostics copied')).toBeVisible();
+  await dialog.locator('.dialog-actions').getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toHaveCount(0);
+});

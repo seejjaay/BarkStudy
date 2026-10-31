@@ -10,6 +10,7 @@ import { createStorage } from '../../src/main/storage/io';
 import type { LibrarySnapshot, Result } from '../../src/shared/control';
 import { parseDeck } from '../../src/shared/deckParse';
 import { SAMPLE_DECK } from '../../src/shared/sampleDeck';
+import { sampleDiagnosticsInput } from './diagnosticsFixture';
 
 let dir: string;
 let lib: Library;
@@ -21,6 +22,8 @@ let backupSaves: { name: string; json: string }[];
 let backupSaveResult: { path: string } | null;
 let openPathResult: string;
 let practice: boolean[];
+let copied: string[];
+let copyResult: Promise<void>;
 
 const files: FileAccess = {
   pickImport: () => Promise.resolve({ ok: true, value: null }),
@@ -47,6 +50,8 @@ beforeEach(async () => {
   backupSaveResult = { path: 'C:/out/backup.json' };
   openPathResult = '';
   practice = [];
+  copied = [];
+  copyResult = Promise.resolve();
   lib = await createLibrary({ storage: createStorage(dir) });
   session = createSessionController({ library: lib, seed: 1, publish: () => undefined });
   h = createControlHandlers({
@@ -67,6 +72,11 @@ beforeEach(async () => {
       },
       afterReplace: () => void order.push('after'),
       setPractice: (on) => void practice.push(on),
+      diagnostics: () => sampleDiagnosticsInput({ app: { version: '9.9.9', electron: '1', chrome: '2', node: '3' } }),
+      copyText: (text) => {
+        copied.push(text);
+        return copyResult;
+      },
     },
     hotkeys: { leaveIt: { rebind: () => true }, bubble: { rebind: () => true } },
   });
@@ -301,11 +311,41 @@ describe('afterReplace and a taken Leave it shortcut', () => {
           published.push({ leaveItConflict, leaveItLabel });
         },
         setPractice: () => undefined,
+        diagnostics: () => sampleDiagnosticsInput(),
+        copyText: () => Promise.resolve(),
       },
       hotkeys: { leaveIt: { rebind: () => true }, bubble: { rebind: () => true } },
     });
     ok((await reset.handle('data:reset', undefined)) as Result<void>);
     expect(published).toEqual([{ leaveItConflict: true, leaveItLabel: 'Ctrl+Alt+L' }]);
     expect([...held]).toEqual([]); // the old shortcut is not left live unseen
+  });
+});
+
+describe('diagnostics:get and diagnostics:copy', () => {
+  it('copy before get is not-found and copies nothing', async () => {
+    expect(codeOf(await call<Result<void>>('diagnostics:copy'))).toBe('not-found');
+    expect(copied).toEqual([]);
+  });
+
+  it('get builds the bundle from the platform input and copy writes exactly that text', async () => {
+    const text = await call<string>('diagnostics:get');
+    expect(text).toContain('BarkStudy 9.9.9');
+    expect(copied).toEqual([]); // looking is not copying
+    ok(await call<Result<void>>('diagnostics:copy'));
+    expect(copied).toEqual([text]);
+  });
+
+  it('reports a clipboard that could not be written', async () => {
+    await call<string>('diagnostics:get');
+    copyResult = Promise.reject(new Error('clipboard busy'));
+    expect(codeOf(await call<Result<void>>('diagnostics:copy'))).toBe('write-failed');
+  });
+
+  it('ignores whatever arguments the renderer sends, and never takes text from it', async () => {
+    const text = await call<string>('diagnostics:get', { text: 'smuggled', home: 'x' });
+    expect(text).not.toContain('smuggled');
+    ok(await call<Result<void>>('diagnostics:copy', { text: 'smuggled' }));
+    expect(copied).toEqual([text]);
   });
 });

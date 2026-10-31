@@ -1,3 +1,4 @@
+import type { EngineLog } from '../engine/replay';
 import { DEFAULT_TUNING } from '../engine/tuning';
 import type { Tuning } from '../engine/types';
 import type { BubbleState, RevealResult, SelfGrade, SubmitResult } from '../shared/bubble';
@@ -76,6 +77,8 @@ export interface SessionController {
   effectLost: () => void;
   setBusy: (busy: boolean) => void;
   setActiveWindow: (id: number | null) => void;
+  /** The engine log of the running session, or of the last one; null before any session. For the diagnostics bundle. */
+  diagnostics: () => EngineLog | null;
   /** Resolves when every review save started so far has finished (also before quitting). */
   settled: () => Promise<void>;
   dispose: () => void;
@@ -447,6 +450,8 @@ export function createSessionController(opts: SessionControllerOptions): Session
     effectLost: () => dispatch({ type: 'ESC_PRESSED' }),
     setBusy: (busy) => host.setBusy(busy),
     setActiveWindow: (id) => host.setActiveWindow(id),
+
+    diagnostics: () => host.diagnostics(),
 
     async settled() {
       while (pending.size > 0) await Promise.allSettled([...pending]);

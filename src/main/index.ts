@@ -1,7 +1,7 @@
-import { mkdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readdirSync, statSync } from 'node:fs';
+import { arch, homedir, release, tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
-import { app, crashReporter, globalShortcut, ipcMain, Notification, powerMonitor, screen, session, shell, systemPreferences, type Display, type WebContents } from 'electron';
+import { app, clipboard, crashReporter, globalShortcut, ipcMain, Notification, powerMonitor, screen, session, shell, systemPreferences, type Display, type WebContents } from 'electron';
 import { DEFAULT_TUNING } from '../engine/tuning';
 import type { Settings } from '../shared/settings';
 import { CONTROL_CHANNEL, type AppStatus } from '../shared/control';
@@ -11,6 +11,7 @@ import { IPC, type SoundCue } from '../shared/ipc';
 import { createBubbleHost } from './bubbleHost';
 import { createControlHandlers } from './controlHandlers';
 import { createControlWindow } from './controlWindow';
+import type { DiagnosticsInput } from './diagnostics';
 import { createDebugRecorder, installDebug, type Hotkeys } from './debug';
 import { createDogHost } from './dogHost';
 import { createEscapeKey } from './escapeKey';
@@ -57,6 +58,25 @@ app.on('child-process-gone', (_event, details) => log.error('main', `a ${details
 // watches is always the same one.
 const e2eSeed = e2e ? Number.parseInt(process.env['BARKSTUDY_SEED'] ?? '', 10) : Number.NaN;
 const seed = (): number => (Number.isSafeInteger(e2eSeed) ? e2eSeed : Date.now() % 2 ** 31);
+
+/** How many crash dumps are saved, and when the newest was written. Anything unreadable counts as none. */
+function crashDumps(dir: string): DiagnosticsInput['crashes'] {
+  let count = 0;
+  let newest: number | null = null;
+  for (const folder of [dir, join(dir, 'reports')]) {
+    try {
+      for (const name of readdirSync(folder)) {
+        if (!name.toLowerCase().endsWith('.dmp')) continue;
+        count++;
+        const at = statSync(join(folder, name)).mtimeMs;
+        if (newest === null || at > newest) newest = at;
+      }
+    } catch {
+      // No such folder yet.
+    }
+  }
+  return { count, newest };
+}
 
 const toInfo = (d: Display): DisplayInfo => ({ id: d.id, bounds: d.bounds, workArea: d.workArea, scaleFactor: d.scaleFactor });
 
@@ -235,6 +255,23 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       setPractice: (on) => {
         leaveItPractice = on;
       },
+      diagnostics: () => {
+        const saved = library.getSettings();
+        return {
+          app: { version: app.getVersion(), electron: process.versions.electron ?? '', chrome: process.versions.chrome ?? '', node: process.versions.node },
+          os: { release: release(), arch: arch() },
+          displays: screen.getAllDisplays().map((d) => ({ width: d.size.width, height: d.size.height, scale: d.scaleFactor })),
+          settings: saved,
+          // batterySaver is wired by the battery saver task; until then it reads as off.
+          state: { trackerDown, leaveItConflict: leaveIt.conflict, batterySaver: false, phase: studySession.view().phase },
+          crashes: crashDumps(join(logDir, 'crashes')),
+          problems: log.tail(50, 'warn'),
+          engine: studySession.diagnostics(),
+          home: homedir(),
+          user: userInfo().username,
+        };
+      },
+      copyText: (text) => clipboard.writeText(text),
     },
     hotkeys: { leaveIt: { rebind: (a) => leaveIt.rebind(a) }, bubble: { rebind: (a) => bubble.rebind(a) } },
   });
