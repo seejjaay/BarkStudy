@@ -44,7 +44,7 @@ export interface StartDraft {
 
 export type StartParse = { ok: true; request: StartRequest } | { ok: false; reason: string };
 
-const wholeMinutes = (s: string): number | null => (/^\s*\d{1,4}\s*$/.test(s) ? Number(s) : null);
+export const wholeMinutes = (s: string): number | null => (/^\s*\d{1,4}\s*$/.test(s) ? Number(s) : null);
 
 /** Why Start is disabled, or the request to send. */
 export function parseStart(draft: StartDraft, decks: readonly DeckSummary[]): StartParse {

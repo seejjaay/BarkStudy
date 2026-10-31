@@ -3,19 +3,21 @@ import type { LibrarySnapshot, Notice, SessionView } from '../../shared/control'
 import { api } from './api';
 import { DecksView } from './decks';
 import { HistoryView } from './history';
+import { SettingsPage } from './settings';
 import { badgeFor } from './sessionState';
 import { StudyView } from './study';
 import { ToastProvider } from './toast';
 
-type View = 'study' | 'decks' | 'history';
+type View = 'study' | 'decks' | 'history' | 'settings';
 type Load = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; snapshot: LibrarySnapshot };
 
 const NAV: { id: View; label: string }[] = [
   { id: 'study', label: 'Study' },
   { id: 'decks', label: 'Decks' },
   { id: 'history', label: 'History' },
+  { id: 'settings', label: 'Settings' },
 ];
-const TITLES: Record<View, string> = { study: 'Study', decks: 'Decks', history: 'History' };
+const TITLES: Record<View, string> = { study: 'Study', decks: 'Decks', history: 'History', settings: 'Settings' };
 
 const NOTICE_TEXT: Record<Notice['kind'], string> = {
   recovered: 'A saved file was damaged. The damaged copy was set aside and the newest good backup was used instead.',
@@ -38,6 +40,8 @@ function Shell() {
   const [session, setSession] = useState<SessionView>({ phase: 'idle' });
   const [trackerDown, setTrackerDown] = useState(false);
   const [leaveIt, setLeaveIt] = useState({ conflict: false, label: 'Ctrl+Alt+L' });
+  // Bumped whenever main reports a status change, so the settings page re-reads what a shortcut conflict or restore changed.
+  const [statusTick, setStatusTick] = useState(0);
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [studyDeckId, setStudyDeckId] = useState<string | null>(null);
   const sawEvent = useRef(false);
@@ -60,6 +64,7 @@ function Shell() {
       else if (e.type === 'status') {
         setTrackerDown(e.trackerDown);
         setLeaveIt({ conflict: e.leaveItConflict, label: e.leaveItLabel });
+        setStatusTick((n) => n + 1);
       }
     });
     void api.call('session:view', undefined).then((v) => {
@@ -114,8 +119,10 @@ function Shell() {
           <div className="banner banner-warn" role="status">
             <span>
               <strong>{leaveIt.label} is used by another app,</strong> so Leave it won&apos;t work from the keyboard. You can still pause from the tray icon or the Study page.
-              Choosing a different shortcut arrives with Settings.
             </span>
+            <button type="button" className="btn btn-quiet" onClick={() => setView('settings')}>
+              Choose another shortcut
+            </button>
           </div>
         )}
         {notices.map((n) => (
@@ -173,6 +180,7 @@ function Shell() {
           />
         )}
         {load.status === 'ready' && view === 'history' && <HistoryView snapshot={load.snapshot} />}
+        {load.status === 'ready' && view === 'settings' && <SettingsPage reloadKey={statusTick} onDataChanged={() => void refresh()} />}
       </main>
     </div>
   );

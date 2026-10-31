@@ -87,3 +87,20 @@ export function importMessage(r: ImportReport, deckName: string): string {
 export function deckLabel(d: Pick<DeckSummary, 'name' | 'cardCount'>): string {
   return `${d.name} (${plural(d.cardCount, 'card')})`;
 }
+
+/** What the settings page says after a change, and what its confirmation dialogs warn about. */
+export const SETTINGS_TEXT = {
+  saved: 'Saved.',
+  appliesNextSession: 'Saved. It applies from your next study session.',
+  loginOn: 'Pandesal will start with Windows, quietly in the tray.',
+  loginOff: 'Pandesal will no longer start with Windows.',
+  loginUnavailable: 'Only the installed app can start with Windows.',
+  exportDone: (path: string) => `Backup saved to ${path}.`,
+  importDone: 'Restored from the backup. What you had before is in the backups folder.',
+  resetDone: 'Everything was reset. A copy of the old data is in the backups folder.',
+  importTitle: 'Restore from a backup?',
+  importBody: 'This replaces all your decks, history and settings with what is in the backup file. Your current files are copied to the backups folder first.',
+  resetTitle: 'Reset everything?',
+  resetBody: 'This removes all your decks, your history and your settings, and Pandesal will walk you through setup again. A copy of your current data stays in the backups folder.',
+  updatesNote: 'Update checking arrives in a later version. Your choice is saved for then.',
+};
