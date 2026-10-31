@@ -138,6 +138,7 @@ export interface LibrarySnapshot {
   notices: Notice[];
   defaults: SessionDefaults;
   trackerDown: boolean;
+  batterySaver: boolean;
   /** The Leave it shortcut could not be registered because another app owns it. */
   leaveItConflict: boolean;
   /** How the Leave it shortcut is written, such as "Ctrl+Alt+L". */
@@ -273,6 +274,8 @@ export const OP_NAMES: readonly OpName[] = [
 
 export interface AppStatus {
   trackerDown: boolean;
+  /** Windows battery saver is on, so Pandesal naps instead of roaming. */
+  batterySaver: boolean;
   leaveItConflict: boolean;
   leaveItLabel: string;
 }

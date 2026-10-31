@@ -53,7 +53,7 @@ beforeEach(async () => {
     library: lib,
     session,
     files,
-    status: () => ({ trackerDown: false, leaveItConflict: false, leaveItLabel: 'Ctrl+Alt+L' }),
+    status: () => ({ trackerDown: false, batterySaver: false, leaveItConflict: false, leaveItLabel: 'Ctrl+Alt+L' }),
     platform: {
       loginItem: {
         get: () => ({ ...loginItem }),

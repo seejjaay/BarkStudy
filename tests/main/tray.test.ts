@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { DeckSummary, Result, SessionView, StartRequest } from '../../src/shared/control';
 import { makeIcon } from '../../src/main/icon';
+import { TRAY } from '../../src/shared/i18n/en';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/shared/settings';
 import {
   MAX_TRAY_DECKS,
@@ -40,6 +41,7 @@ const inputs = (over: Partial<TrayInputs> = {}): TrayInputs => ({
   leaveItLabel: 'Ctrl+Alt+L',
   leaveItConflict: false,
   trackerDown: false,
+  batterySaver: false,
   soundOn: true,
   volume: 0.4,
   ...over,
@@ -64,6 +66,15 @@ describe('statusLine', () => {
 
   it('puts the same line in the tooltip', () => {
     expect(trayTooltip(running())).toBe('BarkStudy\nStudying French');
+  });
+
+  it('with battery saver on, ends with the napping note, in the menu header and the tooltip too', () => {
+    expect(statusLine(running(), true)).toBe('Studying French (napping: battery saver)');
+    expect(statusLine({ phase: 'idle' }, true).endsWith(TRAY.napping)).toBe(true);
+    expect(statusLine(running(), false)).toBe('Studying French');
+    expect(trayTooltip(running(), true)).toBe('BarkStudy\nStudying French (napping: battery saver)');
+    expect(buildTrayMenu(inputs({ batterySaver: true }))[0]?.label).toBe('No session running (napping: battery saver)');
+    expect(buildTrayMenu(inputs())[0]?.label).toBe('No session running');
   });
 });
 

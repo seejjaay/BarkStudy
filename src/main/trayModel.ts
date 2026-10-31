@@ -39,6 +39,8 @@ export interface TrayInputs {
   leaveItLabel: string;
   leaveItConflict: boolean;
   trackerDown: boolean;
+  /** Battery saver is on, so he is napping. */
+  batterySaver: boolean;
   soundOn: boolean;
   /** 0..1. */
   volume: number;
@@ -59,8 +61,13 @@ export type TrayAction =
 const sep: MenuItemSpec = { label: '', separator: true };
 const minutesLeft = (ms: number) => Math.max(1, Math.ceil(ms / 60_000));
 
-/** One line saying what Pandesal is doing, shared by the menu header and the tooltip. */
-export function statusLine(view: SessionView): string {
+/** One line saying what Pandesal is doing, shared by the menu header and the tooltip. On battery saver it says he is napping. */
+export function statusLine(view: SessionView, batterySaver = false): string {
+  const line = sessionLine(view);
+  return batterySaver ? `${line} ${TRAY.napping}` : line;
+}
+
+function sessionLine(view: SessionView): string {
   if (view.phase === 'idle') return TRAY.idle;
   if (view.phase === 'ended') return TRAY.ended(view.answered, view.treats);
   switch (sessionKind(view)) {
@@ -77,11 +84,11 @@ export function statusLine(view: SessionView): string {
   }
 }
 
-export const trayTooltip = (view: SessionView): string => TRAY.tooltip(statusLine(view));
+export const trayTooltip = (view: SessionView, batterySaver = false): string => TRAY.tooltip(statusLine(view, batterySaver));
 
 export function buildTrayMenu(inputs: TrayInputs): MenuItemSpec[] {
   const { view, decks, leaveItLabel } = inputs;
-  const items: MenuItemSpec[] = [{ label: statusLine(view), enabled: false }];
+  const items: MenuItemSpec[] = [{ label: statusLine(view, inputs.batterySaver), enabled: false }];
 
   if (inputs.trackerDown) items.push({ label: TRAY.trackerDown, enabled: false });
   if (inputs.leaveItConflict) items.push({ label: TRAY.shortcutTaken(leaveItLabel), enabled: false });

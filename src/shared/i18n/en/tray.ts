@@ -13,6 +13,8 @@ export const TRAY = {
   away: (deck: string) => `Studying ${deck}: you are away`,
   quiet: (deck: string) => `Studying ${deck}: quiet while another app is in front`,
   running: (deck: string) => `Studying ${deck}`,
+  /** Appended to the status line while battery saver is on. */
+  napping: '(napping: battery saver)',
 
   trackerDown: 'Window tracking is off. Pandesal roams the screen edges.',
   shortcutTaken: (label: string) => `${label} is used by another app, so Leave it works from this menu only.`,

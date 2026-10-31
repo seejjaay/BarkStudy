@@ -6,6 +6,7 @@ import type { EscapeKey } from './escapeKey';
 import type { LeaveIt } from './leaveIt';
 import type { Library } from './library';
 import type { OverlayManager } from './overlay';
+import type { PowerWatch } from './power';
 import type { SessionController } from './session';
 import type { Tracker } from './tracker/tracker';
 import type { AppTray } from './tray';
@@ -96,6 +97,7 @@ export function installDebug(deps: {
   escapeKey: EscapeKey;
   recorder: DebugRecorder;
   library: Library;
+  power: Pick<PowerWatch, 'force'>;
   /** Makes the next backup open or save dialog use this path instead of showing a dialog, which a test cannot click. */
   setNextDialogPath: (path: string) => void;
 }): void {
@@ -104,6 +106,8 @@ export function installDebug(deps: {
     mode: () => deps.dogHost.mode,
     placeOn: (windowId: number) => deps.dogHost.placeOn(windowId),
     freeze: (on: boolean) => deps.dogHost.setRoaming(!on),
+    /** Pretends battery saver is on or off; null hands back to the real reading. */
+    setBatterySaver: (on: boolean | null) => deps.power.force(on),
     killTracker: () => deps.tracker.kill('e2e'),
     overlayCount: () => deps.overlays.count(),
     /** Makes the check-in due now, so a test need not wait minutes for the first card. */

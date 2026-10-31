@@ -55,7 +55,7 @@ beforeEach(async () => {
     library: lib,
     session,
     files,
-    status: () => ({ trackerDown, leaveItConflict: leaveItConflict, leaveItLabel: 'Ctrl+Alt+L' }),
+    status: () => ({ trackerDown, batterySaver: false, leaveItConflict: leaveItConflict, leaveItLabel: 'Ctrl+Alt+L' }),
     ...quiet,
   });
 });
@@ -215,7 +215,7 @@ describe('export', () => {
   it('cancelling the save dialog is a quiet success', async () => {
     const d = ok(await lib.importAsNewDeck('X', 'a,b'));
     const files2: FileAccess = { ...files, saveExport: () => Promise.resolve(null) };
-    const h2 = createControlHandlers({ library: lib, session, files: files2, status: () => ({ trackerDown: false, leaveItConflict: false, leaveItLabel: 'Ctrl+Alt+L' }), ...quiet });
+    const h2 = createControlHandlers({ library: lib, session, files: files2, status: () => ({ trackerDown: false, batterySaver: false, leaveItConflict: false, leaveItLabel: 'Ctrl+Alt+L' }), ...quiet });
     expect(await h2.handle('deck:export', { id: d.deckId })).toEqual({ ok: true, value: null });
   });
 

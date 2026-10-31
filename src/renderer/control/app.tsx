@@ -40,6 +40,7 @@ function Shell() {
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [session, setSession] = useState<SessionView>({ phase: 'idle' });
   const [trackerDown, setTrackerDown] = useState(false);
+  const [batterySaver, setBatterySaver] = useState(false);
   const [leaveIt, setLeaveIt] = useState({ conflict: false, label: DEFAULT_SETTINGS.leaveItHotkey });
   // Bumped whenever main reports a status change, so the settings page re-reads what a shortcut conflict or restore changed.
   const [statusTick, setStatusTick] = useState(0);
@@ -55,6 +56,7 @@ function Shell() {
       const snapshot = await api.call('app:snapshot', undefined);
       setLoad({ status: 'ready', snapshot });
       setTrackerDown(snapshot.trackerDown);
+      setBatterySaver(snapshot.batterySaver);
       setLeaveIt({ conflict: snapshot.leaveItConflict, label: snapshot.leaveItLabel });
     } catch (e) {
       setLoad({ status: 'error', message: e instanceof Error ? e.message : String(e) });
@@ -67,6 +69,7 @@ function Shell() {
       if (e.type === 'session') setSession(e.view);
       else if (e.type === 'status') {
         setTrackerDown(e.trackerDown);
+        setBatterySaver(e.batterySaver);
         setLeaveIt({ conflict: e.leaveItConflict, label: e.leaveItLabel });
         setStatusTick((n) => n + 1);
       } else {
@@ -201,6 +204,7 @@ function Shell() {
             session={session}
             presetDeckId={studyDeckId}
             goDecks={() => setView('decks')}
+            batterySaver={batterySaver}
           />
         )}
         {load.status === 'ready' && view === 'decks' && (

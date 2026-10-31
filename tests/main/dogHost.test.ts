@@ -706,6 +706,109 @@ describe('dog host behaviours', () => {
     host.dispose();
   });
 
+  it('power saving: on while roaming he curls up at once and does not move for 5 s of ticks', () => {
+    const { host, last, advance } = behaviourHost();
+    host.setWorld([T], [D1]);
+    advance(2000);
+    host.setPowerSaving(true);
+    advance(TICK_MS);
+    expect(host.behaviour).toBe('curl');
+    expect(last(1)?.pose).toBe('curl');
+    const x = host.body().x;
+    for (let i = 0; i < 5000 / TICK_MS; i++) advance(TICK_MS);
+    expect(host.body().x).toBe(x);
+    expect(last(1)?.pose).toBe('curl');
+    host.dispose();
+  });
+
+  it('power saving: on during laps lets the laps run to their end, then he curls up', () => {
+    const { host, last, advance } = behaviourHost();
+    host.setWorld([T], [D1]);
+    host.perform({ type: 'RUN_LAPS', windowId: 7 });
+    advance(500);
+    host.setPowerSaving(true);
+    expect(host.behaviour).toBe('laps');
+    advance(1000);
+    expect(host.behaviour).toBe('laps');
+    expect(last(1)?.pose).toBe('run');
+    advance(lapsStop);
+    expect(host.behaviour).toBe('curl');
+    advance(2000); // he falls back onto a platform first
+    expect(host.body().anchor).not.toBeNull();
+    expect(last(1)?.pose).toBe('curl');
+    host.dispose();
+  });
+
+  it('power saving: a hop, a Stay and following the cursor all run as usual, then he curls up again', () => {
+    const { host, advance } = behaviourHost({ cursor: () => ({ x: 0, y: 0 }) });
+    host.setWorld([T], [D1]);
+    host.setPowerSaving(true);
+    host.perform({ type: 'WALK_TO', windowId: 7 });
+    expect(host.behaviour).toBe('hop');
+    advance(HOP_MS + 100);
+    expect(host.behaviour).toBe('curl');
+    host.setStay(true);
+    expect(host.behaviour).toBe('sit-stay');
+    host.setStay(false);
+    expect(host.behaviour).toBe('curl');
+    host.setMood('pleading');
+    expect(host.behaviour).toBe('follow');
+    host.setMood('idle');
+    expect(host.behaviour).toBe('curl');
+    host.dispose();
+  });
+
+  it('power saving: on while curled up because he is away, the user coming back leaves him curled; off then gets him up', () => {
+    const { host, last, advance } = behaviourHost();
+    host.setWorld([T], [D1]);
+    host.perform({ type: 'CURL_UP' });
+    host.setPowerSaving(true);
+    advance(1000);
+    host.wake();
+    expect(host.behaviour).toBe('curl');
+    host.setMood('idle'); // Leave it or the session's end calms him the same way
+    host.wake();
+    expect(host.behaviour).toBe('curl');
+    host.setPowerSaving(false);
+    expect(host.behaviour).toBe('roam');
+    advance(TICK_MS);
+    expect(last(1)?.pose).not.toBe('curl');
+    host.dispose();
+  });
+
+  it('power saving: off while the engine has him curled up (away or paused) leaves him curled, whichever came first', () => {
+    const a = behaviourHost();
+    a.host.setWorld([T], [D1]);
+    a.host.setPowerSaving(true);
+    a.host.perform({ type: 'CURL_UP' });
+    a.host.setPowerSaving(false);
+    expect(a.host.behaviour).toBe('curl');
+    a.host.wake();
+    expect(a.host.behaviour).toBe('roam');
+    a.host.dispose();
+
+    const b = behaviourHost();
+    b.host.setWorld([T], [D1]);
+    b.host.perform({ type: 'CURL_UP' });
+    b.host.setPowerSaving(true);
+    b.host.setPowerSaving(false);
+    expect(b.host.behaviour).toBe('curl');
+    b.host.dispose();
+  });
+
+  it('power saving: off returns him to roaming, and he walks again', () => {
+    const { host, calls, advance } = behaviourHost();
+    host.setWorld([T], [D1]);
+    host.setPowerSaving(true);
+    advance(1000);
+    host.setPowerSaving(false);
+    expect(host.behaviour).toBe('roam');
+    const from = calls.length;
+    advance(30_000);
+    expect(calls.slice(from).some(([, f]) => f?.pose === 'walk')).toBe(true);
+    host.dispose();
+  });
+
   it('an effect he cannot start leaves no zoomies or dig mood behind, whichever comes first', () => {
     const { host, last, advance, lost } = behaviourHost();
     host.setWorld([T], [D1]);

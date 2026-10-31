@@ -112,6 +112,25 @@ test('killing the tracker drops to edge-roaming without a crash', async () => {
   expect(await app.evaluate(({ app: a }) => a.isReady())).toBe(true);
 });
 
+test('battery saver makes him nap where he is, and turning it off gets him up', async () => {
+  type MoodChange = { mood: string; pose: string; effect: string | null };
+  const lastPose = async () => (await debug<MoodChange[]>('moodLog')).at(-1)?.pose;
+  // Landed first, so a fall from the spawn point is not taken for movement.
+  await expect.poll(async () => (await debug<Body>('body')).anchor !== null, { timeout: 5000 }).toBe(true);
+  await debug('setBatterySaver', true);
+  await expect.poll(lastPose, { timeout: 2000 }).toBe('curl');
+  const before = await debug<Body>('body');
+  await new Promise((r) => setTimeout(r, 3000));
+  expect((await debug<Body>('body')).x).toBe(before.x);
+  expect(await lastPose()).toBe('curl');
+  const header = (await debug<{ label: string }[]>('trayMenu'))[0]?.label;
+  expect(header?.endsWith('(napping: battery saver)')).toBe(true);
+
+  await debug('setBatterySaver', false);
+  await expect.poll(lastPose, { timeout: 2000 }).not.toBe('curl');
+  expect((await debug<{ label: string }[]>('trayMenu'))[0]?.label).not.toContain('napping');
+});
+
 test('the overlay renderer cannot reach the network', async () => {
   const result = await app.evaluate(({ BrowserWindow }) => {
     const win = BrowserWindow.getAllWindows()[0];

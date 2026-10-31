@@ -17,11 +17,14 @@ export function StudyView({
   session,
   presetDeckId,
   goDecks,
+  batterySaver,
 }: {
   snapshot: LibrarySnapshot;
   session: SessionView;
   presetDeckId: string | null;
   goDecks: () => void;
+  /** Windows battery saver is on, so he naps; check-ins still come. */
+  batterySaver: boolean;
 }) {
   return (
     <section aria-labelledby="study-title">
@@ -29,7 +32,7 @@ export function StudyView({
         <h1 id="study-title">{T.title}</h1>
       </header>
       {session.phase === 'idle' && <StartForm snapshot={snapshot} presetDeckId={presetDeckId} goDecks={goDecks} />}
-      {session.phase === 'running' && <RunningPanel session={session} />}
+      {session.phase === 'running' && <RunningPanel session={session} batterySaver={batterySaver} />}
       {session.phase === 'ended' && <Summary session={session} />}
     </section>
   );
@@ -138,7 +141,7 @@ function StartForm({ snapshot, presetDeckId, goDecks }: { snapshot: LibrarySnaps
   );
 }
 
-function RunningPanel({ session }: { session: Running }) {
+function RunningPanel({ session, batterySaver }: { session: Running; batterySaver: boolean }) {
   const toast = useToast();
   const badge = badgeFor(session);
   const [revealed, setRevealed] = useState<string | null>(null);
@@ -181,6 +184,7 @@ function RunningPanel({ session }: { session: Running }) {
           </div>
         </div>
         <p className="muted">{badge.detail}</p>
+        {batterySaver && <p className="muted">{T.batterySaver}</p>}
         <dl className="counters">
           <div>
             <dt>{C.answered}</dt>

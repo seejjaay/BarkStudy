@@ -58,7 +58,7 @@ beforeEach(async () => {
     library: lib,
     session,
     files,
-    status: () => ({ trackerDown: false, leaveItConflict: false, leaveItLabel: 'Ctrl+Alt+L' }),
+    status: () => ({ trackerDown: false, batterySaver: false, leaveItConflict: false, leaveItLabel: 'Ctrl+Alt+L' }),
     platform: {
       loginItem: { get: () => ({ available: false, on: false }), set: () => undefined },
       openApps: () => [],
@@ -291,7 +291,7 @@ describe('afterReplace and a taken Leave it shortcut', () => {
     leave.register('Ctrl+Alt+K'); // what the user had bound before the reset
     taken.add('Ctrl+Alt+L'); // another app owns the saved (default) one
     const published: { leaveItConflict: boolean; leaveItLabel: string }[] = [];
-    const statusNow = () => ({ trackerDown: false, leaveItConflict: leave.conflict, leaveItLabel: leave.accelerator ?? '' });
+    const statusNow = () => ({ trackerDown: false, batterySaver: false, leaveItConflict: leave.conflict, leaveItLabel: leave.accelerator ?? '' });
     const reset = createControlHandlers({
       library: lib,
       session,

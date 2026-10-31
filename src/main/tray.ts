@@ -55,7 +55,7 @@ export function createTray(opts: { inputs: () => TrayInputs; onAction: (action: 
 
   function refresh(): void {
     const inputs = opts.inputs();
-    tray.setToolTip(trayTooltip(inputs.view));
+    tray.setToolTip(trayTooltip(inputs.view, inputs.batterySaver));
     spec = buildTrayMenu(inputs);
     const key = JSON.stringify(spec);
     if (key === lastKey) return; // replacing the menu while it is open would close it under the user's pointer

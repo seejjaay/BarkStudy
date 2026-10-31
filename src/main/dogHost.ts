@@ -78,6 +78,11 @@ export interface DogHost {
   setStay: (on: boolean) => void;
   /** The user is back (or the app that held him back is gone, or the session is over): he gets up from a curl. Nothing else changes. */
   wake: () => void;
+  /**
+   * Battery saver: he naps instead of roaming. A roaming dog curls up at once; a hop, an effect, a Stay or following the
+   * cursor runs as usual and ends in a curl. Turning it off gets him up from that nap, never from a curl the engine asked for.
+   */
+  setPowerSaving: (on: boolean) => void;
   readonly behaviour: DogBehaviour;
   readonly mode: 'tracking' | 'edge-roaming';
   body: () => DogBody;
@@ -183,6 +188,13 @@ export function createDogHost(opts: DogHostOptions): DogHost {
   let followWalk: Walk = 0;
   /** An effect was lost or refused: onEffectLost fires from the next tick, so it never re-enters the caller of perform(). */
   let lostPending = false;
+  /** Battery saver is on: he rests curled up instead of roaming. */
+  let powerSaving = false;
+  /**
+   * The engine curled him up (away, or another app held him back), and only wake() gets him up from that. A curl
+   * without it is battery saver's nap, which turning power saving off ends. Cleared whenever he stops curling.
+   */
+  let engineCurl = false;
 
   function rebuild(): void {
     platforms = visibleTopEdges(windows, displays, DOG.height);
@@ -209,17 +221,18 @@ export function createDogHost(opts: DogHostOptions): DogHost {
     behaviour = b;
     if (b !== 'hop') hop = null;
     if (b !== 'follow') followWalk = 0;
+    if (b !== 'curl') engineCurl = false;
   }
 
-  /** What he goes back to when a hop, an effect or a Stay ends. */
+  /** What he goes back to when a hop, an effect, a Stay or following the cursor ends: on battery saver, a nap. */
   function resting(): DogBehaviour {
-    return follows(mood) ? 'follow' : 'roam';
+    return follows(mood) ? 'follow' : powerSaving ? 'curl' : 'roam';
   }
 
   function applyMood(m: Mood): void {
     mood = m;
     if (follows(m) && (behaviour === 'roam' || behaviour === 'curl')) become('follow');
-    else if (!follows(m) && behaviour === 'follow') become('roam');
+    else if (!follows(m) && behaviour === 'follow') become(resting());
   }
 
   function runMoodPlan(now: number): void {
@@ -567,7 +580,10 @@ export function createDogHost(opts: DogHostOptions): DogHost {
             if (!effect && behaviour !== 'sit-stay') startHop(action.windowId);
             break;
           case 'CURL_UP':
-            if (!effect && behaviour !== 'sit-stay') become('curl');
+            if (!effect && behaviour !== 'sit-stay') {
+              become('curl');
+              engineCurl = true;
+            }
             break;
         }
       });
@@ -607,7 +623,20 @@ export function createDogHost(opts: DogHostOptions): DogHost {
     },
     wake() {
       input(() => {
-        if (behaviour === 'curl') become(resting());
+        // On battery saver he gets up only as far as his nap.
+        if (behaviour === 'curl') {
+          engineCurl = false;
+          become(resting());
+        }
+      });
+    },
+    setPowerSaving(on) {
+      input(() => {
+        if (on === powerSaving) return;
+        powerSaving = on;
+        // Anything else he is doing plays out and ends in resting(), so it is never cut short.
+        if (on && behaviour === 'roam') become('curl');
+        else if (!on && behaviour === 'curl' && !engineCurl) become(resting());
       });
     },
     get behaviour() {

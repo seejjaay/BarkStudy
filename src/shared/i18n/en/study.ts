@@ -30,6 +30,7 @@ export const STUDY = {
   stayEnded: 'Stay ended.',
   stayStarted: (m: number) => `Pandesal will stay quietly for ${m} minutes.`,
 
+  batterySaver: 'Battery saver is on, so Pandesal is napping. Check-ins still come.',
   saveProblemLead: 'A review could not be saved.',
   saveProblemBody: 'The session carries on, but check your disk and your saved data.',
   asks: 'Pandesal asks',

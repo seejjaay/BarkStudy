@@ -22,10 +22,12 @@ import { createLibrary } from './library';
 import { createLog } from './logs';
 import { hardenWebContents, installNetworkGuard, UI_PARTITION } from './network';
 import { createOverlayManager } from './overlay';
+import { createPowerWatch } from './power';
 import { createRendererErrorGate } from './rendererErrors';
 import { createSessionController } from './session';
 import { createStorage } from './storage/io';
 import { createSuppress } from './suppress';
+import { readBatterySaver } from './system/power-win32';
 import { createTray } from './tray';
 import { runTrayAction } from './trayModel';
 import { createTracker, lazyWin32 } from './tracker/tracker';
@@ -117,7 +119,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
   const notify = (message: string): void => {
     if (Notification.isSupported()) new Notification({ title: 'BarkStudy', body: message, silent: true }).show();
   };
-  const appStatus = (): AppStatus => ({ trackerDown, leaveItConflict: leaveIt.conflict, leaveItLabel: leaveIt.accelerator ?? library.getSettings().leaveItHotkey });
+  const appStatus = (): AppStatus => ({ trackerDown, batterySaver: power.on, leaveItConflict: leaveIt.conflict, leaveItLabel: leaveIt.accelerator ?? library.getSettings().leaveItHotkey });
   const publishStatus = (): void => {
     controlWindow.send({ type: 'status', ...appStatus() });
     appTray.refresh();
@@ -144,6 +146,18 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
     cursor: () => screen.getCursorScreenPoint(),
     onEffectLost: () => studySession.effectLost(),
   });
+  // Battery saver makes him nap; check-ins and the engine carry on as they are. Started once the tray exists.
+  const power = createPowerWatch({
+    read: readBatterySaver,
+    onChange: (on) => {
+      log.info('power', `battery saver ${on ? 'on' : 'off'}`);
+      dogHost.setPowerSaving(on);
+      publishStatus();
+    },
+    log,
+  });
+  // Tests start with it off whatever this machine says, so a laptop on battery saver does not put the dog to sleep mid-test.
+  if (e2e) power.force(false);
   // Esc is held only while an effect runs; a press ends the effect and keeps the level.
   const escapeKey = createEscapeKey({ hotkeys, onPress: () => studySession.dispatch({ type: 'ESC_PRESSED' }), log });
 
@@ -186,6 +200,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       leaveItLabel: leaveIt.accelerator ?? library.getSettings().leaveItHotkey,
       leaveItConflict: leaveIt.conflict,
       trackerDown,
+      batterySaver: power.on,
       soundOn: library.getSettings().soundOn,
       volume: library.getSettings().volume,
     }),
@@ -262,8 +277,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
           os: { release: release(), arch: arch() },
           displays: screen.getAllDisplays().map((d) => ({ width: d.size.width, height: d.size.height, scale: d.scaleFactor })),
           settings: saved,
-          // batterySaver is wired by the battery saver task; until then it reads as off.
-          state: { trackerDown, leaveItConflict: leaveIt.conflict, batterySaver: false, phase: studySession.view().phase },
+          state: { trackerDown, leaveItConflict: leaveIt.conflict, batterySaver: power.on, phase: studySession.view().phase },
           crashes: crashDumps(join(logDir, 'crashes')),
           problems: log.tail(50, 'warn'),
           engine: studySession.diagnostics(),
@@ -297,6 +311,10 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
   });
   powerMonitor.on('lock-screen', () => idle.setLocked(true));
   powerMonitor.on('unlock-screen', () => idle.setLocked(false));
+  // Battery saver can change with the power source and over sleep; between those, the watch polls.
+  powerMonitor.on('on-battery', () => power.refresh());
+  powerMonitor.on('on-ac', () => power.refresh());
+  powerMonitor.on('resume', () => power.refresh());
 
   function pushWorld(): void {
     const displays = screen.getAllDisplays().map(toInfo);
@@ -348,6 +366,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       escapeKey,
       recorder,
       library,
+      power,
       setNextDialogPath: (path) => {
         nextDialogPath = path;
       },
@@ -357,6 +376,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
   displaysChanged();
   tracker.start();
   idle.start();
+  power.start();
   // A start-with-Windows launch passes --hidden: the dog and the tray come up, the window waits to be opened.
   if (process.env['BARKSTUDY_NO_CONTROL'] !== '1' && !process.argv.includes('--hidden')) controlWindow.show();
 
@@ -375,6 +395,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       }
       tracker.stop();
       idle.stop();
+      power.stop();
       studySession.dispose();
       escapeKey.dispose();
       bubble.dispose();
