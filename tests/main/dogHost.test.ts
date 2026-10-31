@@ -739,13 +739,14 @@ describe('dog host behaviours', () => {
     host.dispose();
   });
 
-  it('power saving: a wander hop does not wake him from his nap, with an idle or a wander mood', () => {
+  it('power saving: a wander walk never wakes him from his nap, whatever mood came before it', () => {
     const { host, last, advance } = behaviourHost();
     host.setWorld([T], [D1]);
     host.setPowerSaving(true);
     advance(SETTLE_MS + 100);
     const x = host.body().x;
-    for (const mood of ['idle', 'wander']) {
+    // WALK_TO comes only from the engine's wander, and arrives before its own wander mood: the mood he has is the last one.
+    for (const mood of ['nap', 'calm', 'sulk', 'idle', 'wander']) {
       host.setMood(mood);
       host.perform({ type: 'WALK_TO', windowId: 7 });
       expect(host.behaviour).toBe('curl');
@@ -756,17 +757,19 @@ describe('dog host behaviours', () => {
     host.dispose();
   });
 
-  it('power saving: a WALK_TO that comes with another mood (a card waiting) still hops, then he curls up', () => {
+  it('power saving: once it is off, the next wander walk hops as before', () => {
     const { host, last, advance } = behaviourHost();
     host.setWorld([T], [D1]);
     host.setPowerSaving(true);
-    host.setMood('curious');
+    host.perform({ type: 'WALK_TO', windowId: 7 });
+    expect(host.behaviour).toBe('curl');
+    host.setPowerSaving(false);
     host.perform({ type: 'WALK_TO', windowId: 7 });
     expect(host.behaviour).toBe('hop');
     advance(HOP_MS + 100);
-    expect(host.behaviour).toBe('curl');
+    expect(host.behaviour).toBe('roam');
     expect(host.body().anchor?.windowId).toBe(7);
-    expect(last(1)?.pose).toBe('curl');
+    expect(last(1)?.pose).not.toBe('curl');
     host.dispose();
   });
 
