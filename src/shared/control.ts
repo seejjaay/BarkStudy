@@ -1,5 +1,6 @@
 import type { SkippedRow } from './deckParse';
 import type { Card, Deck, SessionRecord } from './model';
+import type { Settings } from './settings';
 import type { Grade } from './srs';
 
 /**
@@ -140,6 +141,26 @@ export interface LibrarySnapshot {
   leaveItLabel: string;
 }
 
+/** The settings that `settings:update` may change. Shortcuts have their own operation (they must be bound first) and `onboarded` is set by finishing onboarding. */
+export type SettingsPatch = Partial<Omit<Settings, 'leaveItHotkey' | 'bubbleHotkey' | 'onboarded'>>;
+
+export type LinkId = 'repo' | 'releases' | 'license';
+
+export interface LoginItemState {
+  /** False where start-with-Windows is not offered (a development run, not the installed app). */
+  available: boolean;
+  on: boolean;
+}
+
+export interface SettingsView {
+  settings: Settings;
+  loginItem: LoginItemState;
+  /** Process names of the windows open right now, for picking an app to leave alone. */
+  openApps: string[];
+  /** Where the data files live, for display. */
+  dataDir: string;
+}
+
 export interface StartRequest {
   deckId: string;
   topic: string;
@@ -174,6 +195,11 @@ export interface ControlOps {
   'session:answer': [{ grade: Grade }, Result<void>];
   'session:control': [SessionAction, Result<void>];
   'session:dismiss-summary': [void, void];
+  'settings:get': [void, SettingsView];
+  'settings:update': [SettingsPatch, Result<Settings>];
+  'settings:hotkey': [{ which: 'leaveIt' | 'bubble'; accelerator: string }, Result<Settings>];
+  'settings:login-item': [{ on: boolean }, Result<LoginItemState>];
+  'link:open': [{ id: LinkId }, Result<void>];
 }
 
 export type OpName = keyof ControlOps;
@@ -200,6 +226,11 @@ export const OP_NAMES: readonly OpName[] = [
   'session:answer',
   'session:control',
   'session:dismiss-summary',
+  'settings:get',
+  'settings:update',
+  'settings:hotkey',
+  'settings:login-item',
+  'link:open',
 ];
 
 export interface AppStatus {

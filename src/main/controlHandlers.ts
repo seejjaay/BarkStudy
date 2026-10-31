@@ -3,18 +3,24 @@ import {
   type AppError,
   type AppStatus,
   type CardUndo,
+  type LoginItemState,
   type LibrarySnapshot,
   type OpName,
   type Result,
   type SessionAction,
   type SessionRow,
+  type SettingsPatch,
+  type SettingsView,
   type StartRequest,
   type UndoToken,
 } from '../shared/control';
+import { isAccelerator, sameAccelerator } from '../shared/accelerator';
+import type { Settings } from '../shared/settings';
 import { isDecksFile } from '../shared/validate';
 import type { Grade } from '../shared/srs';
 import type { Library } from './library';
 import { MAX_DECK_NAME } from './library';
+import { resolveLink } from './links';
 import type { SessionController } from './session';
 
 /**
@@ -39,11 +45,31 @@ export interface FileAccess {
   saveExport: (suggestedName: string, csv: string) => Promise<{ path: string } | null>;
 }
 
+/** What the handlers need from the operating system, supplied by the Electron side so this module stays testable. */
+export interface PlatformAccess {
+  loginItem: { get: () => LoginItemState; set: (on: boolean) => void };
+  /** Process names of the windows open right now. */
+  openApps: () => string[];
+  dataDir: string;
+  /** Opens an address in the browser. Only ever called with an address from the link allowlist. */
+  openLink: (url: string) => void;
+  /** Makes the dog follow the reduced-motion setting now. */
+  applyReducedMotion: (mode: Settings['reducedMotion']) => void;
+}
+
+/** The global shortcuts that can be moved. `rebind` returns false, with the old shortcut still working, if another app owns the new one. */
+export interface HotkeyTargets {
+  leaveIt: { rebind: (accelerator: string) => boolean };
+  bubble: { rebind: (accelerator: string) => boolean };
+}
+
 export interface ControlHandlerOptions {
   library: Library;
   session: SessionController;
   files: FileAccess;
   status: () => AppStatus;
+  platform: PlatformAccess;
+  hotkeys: HotkeyTargets;
 }
 
 export interface ControlHandlers {
@@ -87,6 +113,41 @@ function parseStart(v: unknown): StartRequest | null {
   return { deckId, topic, checkinMinMinutes, checkinMaxMinutes };
 }
 
+/** Only the settings the settings page may change; anything else, an empty patch, or a wrong type is refused. */
+function parsePatch(v: unknown): SettingsPatch | null {
+  const a = rec(v);
+  if (!a || Object.keys(a).length === 0) return null;
+  for (const [key, x] of Object.entries(a)) {
+    switch (key) {
+      case 'cap':
+        if (x !== 2 && x !== 3 && x !== 4) return null;
+        break;
+      case 'preset':
+        if (typeof x !== 'string') return null;
+        break;
+      case 'checkinMinMinutes':
+      case 'checkinMaxMinutes':
+      case 'volume':
+        if (typeof x !== 'number') return null;
+        break;
+      case 'excludedApps':
+        if (!Array.isArray(x) || !x.every((item) => typeof item === 'string')) return null;
+        break;
+      case 'soundOn':
+      case 'updateChecks':
+      case 'betaChannel':
+        if (typeof x !== 'boolean') return null;
+        break;
+      case 'reducedMotion':
+        if (x !== 'system' && x !== 'on' && x !== 'off') return null;
+        break;
+      default:
+        return null;
+    }
+  }
+  return a;
+}
+
 function parseAction(v: unknown): SessionAction | null {
   const a = rec(v);
   if (!a) return null;
@@ -103,7 +164,7 @@ function parseAction(v: unknown): SessionAction | null {
 }
 
 export function createControlHandlers(opts: ControlHandlerOptions): ControlHandlers {
-  const { library, session, files } = opts;
+  const { library, session, files, platform, hotkeys } = opts;
 
   function snapshot(): LibrarySnapshot {
     const decks = library.listDecks();
@@ -114,6 +175,37 @@ export function createControlHandlers(opts: ControlHandlerOptions): ControlHandl
       .map((s) => ({ ...s, deckName: names.get(s.deckId) ?? null }));
     const { cap, checkinMinMinutes, checkinMaxMinutes } = library.getSettings();
     return { decks, sessions, notices: library.notices(), defaults: { cap, checkinMinMinutes, checkinMaxMinutes }, ...opts.status() };
+  }
+
+  async function updateSettings(patch: SettingsPatch): Promise<unknown> {
+    const r = await library.updateSettings(patch);
+    if (r.ok && patch.reducedMotion !== undefined) platform.applyReducedMotion(r.value.reducedMotion);
+    return r;
+  }
+
+  /** Binds the new shortcut before saving it, so one that cannot be bound is never stored; a failed save puts the old one back. */
+  async function setHotkey(which: 'leaveIt' | 'bubble', accelerator: string): Promise<unknown> {
+    if (!isAccelerator(accelerator)) return fail('hotkey-invalid', 'that is not a usable shortcut');
+    const current = library.getSettings();
+    const key = which === 'leaveIt' ? 'leaveItHotkey' : 'bubbleHotkey';
+    const other = which === 'leaveIt' ? current.bubbleHotkey : current.leaveItHotkey;
+    if (sameAccelerator(accelerator, other)) return fail('hotkey-invalid', 'the two shortcuts must differ');
+    const old = current[key];
+    if (sameAccelerator(accelerator, old)) return { ok: true, value: current };
+    if (!hotkeys[which].rebind(accelerator)) return fail('hotkey-taken', 'another app is using that shortcut');
+    const saved = await library.updateSettings({ [key]: accelerator });
+    if (!saved.ok) hotkeys[which].rebind(old);
+    return saved;
+  }
+
+  function setLoginItem(on: boolean): unknown {
+    if (!platform.loginItem.get().available) return { ok: true, value: { available: false, on: false } };
+    platform.loginItem.set(on);
+    return { ok: true, value: platform.loginItem.get() };
+  }
+
+  function settingsView(): SettingsView {
+    return { settings: library.getSettings(), loginItem: platform.loginItem.get(), openApps: platform.openApps(), dataDir: platform.dataDir };
   }
 
   async function importFile(deckId: string | null): Promise<unknown> {
@@ -198,6 +290,22 @@ export function createControlHandlers(opts: ControlHandlerOptions): ControlHandl
         case 'session:dismiss-summary':
           session.dismissSummary();
           return undefined;
+        case 'settings:get':
+          return settingsView();
+        case 'settings:update': {
+          const patch = parsePatch(args);
+          return patch ? updateSettings(patch) : bad();
+        }
+        case 'settings:hotkey':
+          return a && (a['which'] === 'leaveIt' || a['which'] === 'bubble') && typeof a['accelerator'] === 'string' ? setHotkey(a['which'], a['accelerator']) : bad();
+        case 'settings:login-item':
+          return a && typeof a['on'] === 'boolean' ? setLoginItem(a['on']) : bad();
+        case 'link:open': {
+          const url = resolveLink(a?.['id']);
+          if (url === null) return bad();
+          platform.openLink(url);
+          return { ok: true, value: undefined };
+        }
       }
     },
   };

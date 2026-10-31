@@ -427,7 +427,10 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
           if (value !== undefined) next[key] = value;
         }
         if (!isSettings(next)) return fail('invalid-request', 'that setting is not usable');
-        Object.assign(draft, next);
+        const whole: Settings = { ...fillSettings(next), excludedApps: normalizeExcluded(next.excludedApps) };
+        const problem = checkSettings(whole);
+        if (problem !== null) return fail('invalid-request', problem);
+        Object.assign(draft, whole);
         return good(structuredClone(draft));
       }),
     notices: () => notices.map((n) => ({ ...n })),

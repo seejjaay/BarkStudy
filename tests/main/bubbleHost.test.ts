@@ -12,6 +12,8 @@ let focusCalls: [unknown, boolean][];
 let registered: Map<string, () => void>;
 let registerResult: boolean;
 let registerCalls: number;
+let accel: string;
+let taken: Set<string>;
 let host: BubbleHost;
 const session = {
   dismissBubble: vi.fn(),
@@ -27,6 +29,8 @@ beforeEach(() => {
   registered = new Map();
   registerResult = true;
   registerCalls = 0;
+  accel = BUBBLE_HOTKEY;
+  taken = new Set();
   for (const fn of Object.values(session)) fn.mockReset();
   session.submitText.mockReturnValue({ ok: true, match: 'exact', expected: 'Paris' });
   session.revealAnswer.mockReturnValue({ ok: true, back: 'Paris' });
@@ -39,13 +43,15 @@ beforeEach(() => {
       setFocus: (s, on) => focusCalls.push([s, on]),
     },
     hotkeys: {
-      register: (accel, fn) => {
+      register: (a, fn) => {
         registerCalls++;
-        if (registerResult) registered.set(accel, fn);
-        return registerResult;
+        const ok = registerResult && !taken.has(a);
+        if (ok) registered.set(a, fn);
+        return ok;
       },
-      unregister: (accel) => void registered.delete(accel),
+      unregister: (a) => void registered.delete(a),
     },
+    accelerator: () => accel,
   };
   host = createBubbleHost(deps);
 });
@@ -91,6 +97,49 @@ describe('the focus hotkey', () => {
   it('is released when the host is disposed mid-question', () => {
     host.onBubbleChanged(open);
     host.dispose();
+    expect(registered.size).toBe(0);
+  });
+});
+
+describe('a rebound focus hotkey', () => {
+  it('registers whatever the setting says when the question appears', () => {
+    accel = 'Control+Alt+K';
+    host.onBubbleChanged(open);
+    expect([...registered.keys()]).toEqual(['Control+Alt+K']);
+    host.onBubbleChanged(null);
+    expect(registered.size).toBe(0);
+  });
+
+  it('rebinding while a question is up swaps the shortcut and the new one works', () => {
+    host.onBubbleChanged(open);
+    expect(host.rebind('Control+Alt+K')).toBe(true);
+    expect([...registered.keys()]).toEqual(['Control+Alt+K']);
+    registered.get('Control+Alt+K')!();
+    expect(session.openBubble).toHaveBeenCalledOnce();
+    accel = 'Control+Alt+K';
+    host.onBubbleChanged(null);
+    expect(registered.size).toBe(0);
+  });
+
+  it('rebinding to a shortcut another app owns keeps the old one and says no', () => {
+    host.onBubbleChanged(open);
+    taken.add('Control+Alt+K');
+    expect(host.rebind('Control+Alt+K')).toBe(false);
+    expect([...registered.keys()]).toEqual([BUBBLE_HOTKEY]);
+  });
+
+  it('rebinding to the shortcut already held succeeds without touching it', () => {
+    host.onBubbleChanged(open);
+    const before = registerCalls;
+    expect(host.rebind('Ctrl+Alt+A')).toBe(true);
+    expect(registerCalls).toBe(before);
+  });
+
+  it('with no question up it only checks the shortcut is free, and holds nothing afterwards', () => {
+    expect(host.rebind('Control+Alt+K')).toBe(true);
+    expect(registered.size).toBe(0);
+    taken.add('Control+Alt+J');
+    expect(host.rebind('Control+Alt+J')).toBe(false);
     expect(registered.size).toBe(0);
   });
 });

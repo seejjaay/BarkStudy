@@ -132,6 +132,20 @@ describe('settings', () => {
     expect((await open()).getSettings()).toMatchObject({ soundOn: true, volume: 0.65 });
   });
 
+  it('updateSettings refuses a whole that is not usable and keeps what was saved', async () => {
+    const lib = await open();
+    ok(await lib.updateSettings({ cap: 3 }));
+    for (const bad of [{ preset: 'x' }, { checkinMinMinutes: 30, checkinMaxMinutes: 10 }, { checkinMaxMinutes: 241 }, { leaveItHotkey: 'Control+Alt+A' }, { bubbleHotkey: 'L' }]) {
+      expect(code(await lib.updateSettings(bad as Partial<Settings>)), JSON.stringify(bad)).toBe('invalid-request');
+    }
+    expect(lib.getSettings()).toMatchObject({ cap: 3, preset: 'classic', checkinMinMinutes: 5, checkinMaxMinutes: 15 });
+  });
+
+  it('updateSettings stores excluded apps in their normal form', async () => {
+    const lib = await open();
+    expect(ok(await lib.updateSettings({ excludedApps: ['Game.EXE', ' game.exe', ''] })).excludedApps).toEqual(['game.exe']);
+  });
+
   it('updateSettings ignores a field that is not a setting', async () => {
     const lib = await open();
     ok(await lib.updateSettings({ volume: 0.9, extra: 1 } as Partial<Settings>));
