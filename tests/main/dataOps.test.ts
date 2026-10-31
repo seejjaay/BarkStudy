@@ -262,7 +262,7 @@ describe('onboarding:finish', () => {
 });
 
 describe('afterReplace and a taken Leave it shortcut', () => {
-  it('puts the conflict on record, so the status published afterwards says so', async () => {
+  it('publishes the conflict and the saved shortcut as the label, and lets the old one go', async () => {
     const taken = new Set<string>();
     const held = new Set<string>();
     const leave = createLeaveIt({
@@ -280,12 +280,13 @@ describe('afterReplace and a taken Leave it shortcut', () => {
     });
     leave.register('Ctrl+Alt+K'); // what the user had bound before the reset
     taken.add('Ctrl+Alt+L'); // another app owns the saved (default) one
-    const statuses: boolean[] = [];
+    const published: { leaveItConflict: boolean; leaveItLabel: string }[] = [];
+    const statusNow = () => ({ trackerDown: false, leaveItConflict: leave.conflict, leaveItLabel: leave.accelerator ?? '' });
     const reset = createControlHandlers({
       library: lib,
       session,
       files,
-      status: () => ({ trackerDown: false, leaveItConflict: leave.conflict, leaveItLabel: leave.accelerator ?? '' }),
+      status: statusNow,
       platform: {
         loginItem: { get: () => ({ available: false, on: false }), set: () => undefined },
         openApps: () => [],
@@ -296,15 +297,15 @@ describe('afterReplace and a taken Leave it shortcut', () => {
         openPath: () => Promise.resolve(''),
         afterReplace: () => {
           leave.restore(lib.getSettings().leaveItHotkey);
-          statuses.push(leave.conflict);
+          const { leaveItConflict, leaveItLabel } = statusNow(); // built the way index.ts's appStatus() builds it
+          published.push({ leaveItConflict, leaveItLabel });
         },
         setPractice: () => undefined,
       },
       hotkeys: { leaveIt: { rebind: () => true }, bubble: { rebind: () => true } },
     });
     ok((await reset.handle('data:reset', undefined)) as Result<void>);
-    expect(statuses).toEqual([true]);
-    expect(leave.conflict).toBe(true);
-    expect([...held]).toEqual(['Ctrl+Alt+K']); // the working shortcut is kept
+    expect(published).toEqual([{ leaveItConflict: true, leaveItLabel: 'Ctrl+Alt+L' }]);
+    expect([...held]).toEqual([]); // the old shortcut is not left live unseen
   });
 });

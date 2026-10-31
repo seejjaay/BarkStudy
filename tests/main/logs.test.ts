@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createLog, type LogFs } from '../../src/main/logs';
 
 /** Files in memory; `failNext` makes the next appends reject. */
@@ -111,6 +111,35 @@ describe('createLog', () => {
     const all = log.tail(1000, 'warn');
     expect(all).toHaveLength(500);
     expect(all[0]).toContain('m100');
+  });
+
+  it('flush gives up after its timeout when a write never settles, so quitting is not held up', async () => {
+    vi.useFakeTimers();
+    try {
+      const fs = memoryFs();
+      fs.append = () => new Promise<void>(() => undefined);
+      const log = createLog({ dir: 'logs', now: () => T0, fs });
+      log.error('a', 'stuck');
+      let done = false;
+      void log.flush().then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(2);
+      expect(done).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a flush that finishes in time does not wait for its timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      const log = createLog({ dir: 'logs', now: () => T0, fs: memoryFs() });
+      log.info('a', 'x');
+      await log.flush(); // would hang here if it waited on the fake clock
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('echoes entries when asked to', () => {

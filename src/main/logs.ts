@@ -40,13 +40,16 @@ export interface Log {
   info: (area: string, message: string) => void;
   /** The last `n` entries at `min` or worse, oldest first. An entry with a stack is one string with newlines. */
   tail: (n: number, min: 'warn' | 'error') => string[];
-  /** Resolves when everything logged so far has been written, or when a write failed (the lines wait for the next try). */
-  flush: () => Promise<void>;
+  /**
+   * Resolves when everything logged so far has been written, when a write failed (the lines wait for the next try), or
+   * after `timeoutMs` (default 2,000) if the disk hangs, so a caller such as quitting is never held up for good.
+   */
+  flush: (timeoutMs?: number) => Promise<void>;
 }
 
 export interface LogOptions {
   dir: string;
-  /** A file is closed once the next line would take it past this. Default 256 KiB. */
+  /** A file is closed once the next line would take it past this. Default 1,000,000. */
   maxBytes?: number;
   /** How many files to keep, the live one included. Default 3. */
   files?: number;
@@ -71,7 +74,7 @@ const stackOf = (err: unknown): string | null => {
 export function createLog(opts: LogOptions): Log {
   const fs = opts.fs ?? nodeLogFs;
   const now = opts.now ?? (() => Date.now());
-  const maxBytes = opts.maxBytes ?? 256 * 1024;
+  const maxBytes = opts.maxBytes ?? 1_000_000;
   const files = Math.max(1, opts.files ?? 3);
   const nameOf = (i: number) => join(opts.dir, i === 0 ? 'app.log' : `app.${i}.log`);
 
@@ -142,10 +145,21 @@ export function createLog(opts: LogOptions): Log {
       const wanted = ring.filter((e) => RANK[e.level] >= RANK[min]);
       return wanted.slice(Math.max(0, wanted.length - Math.max(0, n))).map((e) => e.text);
     },
-    async flush() {
-      do {
-        await kick();
-      } while (pending.length > 0 && !failed);
+    async flush(timeoutMs = 2000) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const written = (async () => {
+        do {
+          await kick();
+        } while (pending.length > 0 && !failed);
+      })();
+      const gaveUp = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, timeoutMs);
+      });
+      try {
+        await Promise.race([written, gaveUp]);
+      } finally {
+        clearTimeout(timer);
+      }
     },
   };
 }

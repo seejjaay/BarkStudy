@@ -23,7 +23,7 @@ export interface LeaveIt {
   register: (accelerator: string) => boolean;
   /** Moves to another accelerator. If the new one is taken the old one stays, so the user is never left with none. */
   rebind: (accelerator: string) => boolean;
-  /** For a saved choice that was just swapped in: rebinds, and if it is taken registers it anyway so the conflict is reported. */
+  /** For a saved choice that was just swapped in: rebinds; if it is taken the old shortcut is released too, leaving the state a fresh launch would have (the saved key as the label, the conflict on). */
   restore: (accelerator: string) => boolean;
   readonly accelerator: string | null;
   readonly conflict: boolean;
@@ -77,12 +77,13 @@ export function createLeaveIt(deps: LeaveItDeps): LeaveIt {
   }
 
   function restore(accelerator: string): boolean {
-    const before = current;
     if (rebind(accelerator)) return true;
-    // The old one stays, but the conflict is now on record. (If the shortcut was freed in between, take it and let go of the old.)
-    const ok = register(accelerator);
-    if (ok && before !== null && before !== accelerator) deps.hotkeys.unregister(before);
-    return ok;
+    // The saved shortcut is taken. Unlike rebind, restore must not keep an old key the saved settings no longer name:
+    // it would stay live unseen while the label and banner pointed at the wrong one. Let it go and end up exactly as a
+    // fresh launch with these settings would: the saved key is the label and the conflict is on record.
+    if (current !== null) deps.hotkeys.unregister(current);
+    current = null;
+    return register(accelerator);
   }
 
   return {
