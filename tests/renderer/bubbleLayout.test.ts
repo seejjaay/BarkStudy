@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUBBLE_GAP, BUBBLE_MARGIN, placeBubble } from '../../src/renderer/overlay/bubbleLayout';
+import { BUBBLE_GAP, BUBBLE_MARGIN, placeBubble, unionRects } from '../../src/renderer/overlay/bubbleLayout';
 
 const viewport = { width: 1920, height: 1080 };
 const size = { width: 320, height: 200 };
@@ -35,5 +35,19 @@ describe('placeBubble', () => {
     const p = placeBubble(dog(10, 10), { width: 3000, height: 3000 }, viewport);
     expect(p.x).toBe(BUBBLE_MARGIN);
     expect(p.y).toBe(BUBBLE_MARGIN);
+  });
+});
+
+describe('unionRects', () => {
+  it('holds every rect', () => {
+    expect(unionRects([dog(100, 200), { x: 80, y: 120, width: 150, height: 30 }])).toEqual({ x: 80, y: 120, width: 150, height: 128 });
+  });
+
+  it('is the rect itself for one', () => {
+    expect(unionRects([dog(10, 20)])).toEqual(dog(10, 20));
+  });
+
+  it('is empty for none', () => {
+    expect(unionRects([])).toEqual({ x: 0, y: 0, width: 0, height: 0 });
   });
 });

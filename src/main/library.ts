@@ -12,8 +12,9 @@ import {
 } from '../shared/control';
 import { exportDeck as exportCsv, parseDeck } from '../shared/deckParse';
 import type { Card, Deck, DecksFile, GuiltTripRecord, HistoryFile, SessionRecord } from '../shared/model';
-import type { Settings } from '../shared/settings';
+import { DEFAULT_SETTINGS, fillSettings, type Settings } from '../shared/settings';
 import { newCard } from '../shared/srs';
+import { isSettings } from '../shared/validate';
 import type { SessionSummary } from './engineHost';
 import type { ReadResult, Storage, StoreDef } from './storage/io';
 import { decksStore, historyStore, settingsStore } from './storage/stores';
@@ -58,6 +59,8 @@ export interface Library {
   /** How long the most recent guilt trip waited, for Pandesal's greeting. */
   lastGuiltMs: () => number | null;
   getSettings: () => Settings;
+  /** Changes the named settings and leaves the rest. A value that is not valid for its setting is refused with `invalid-request`. */
+  updateSettings: (patch: Partial<Settings>) => Promise<Result<Settings>>;
   /** What went wrong, or was quietly repaired, while opening. */
   notices: () => Notice[];
 }
@@ -113,6 +116,7 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
 
   const decks = await load<DecksFile>(decksStore, 'decks');
   const settings = await load<Settings>(settingsStore, 'settings');
+  settings.value = fillSettings(settings.value); // a file saved before the sound settings existed has no such fields
   const hist = await load<HistoryFile>(historyStore, 'history');
 
   function mutate<T, R>(slot: Slot<T>, fn: (draft: T) => Result<R>): Promise<Result<R>> {
@@ -332,6 +336,19 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
     history: () => structuredClone(hist.value),
     lastGuiltMs: () => hist.value.guiltTrips.at(-1)?.waitedMs ?? null,
     getSettings: () => structuredClone(settings.value),
+
+    updateSettings: (patch) =>
+      mutate(settings, (draft) => {
+        // Only the named settings are taken, and the result must be a valid whole before anything is written.
+        const next: Record<string, unknown> = { ...draft };
+        for (const key of Object.keys(DEFAULT_SETTINGS)) {
+          const value = (patch as Record<string, unknown>)[key];
+          if (value !== undefined) next[key] = value;
+        }
+        if (!isSettings(next)) return fail('invalid-request', 'that setting is not usable');
+        Object.assign(draft, next);
+        return good(structuredClone(draft));
+      }),
     notices: () => notices.map((n) => ({ ...n })),
   };
 }

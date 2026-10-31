@@ -1,5 +1,6 @@
 import { BrowserWindow, type Display, type WebContents } from 'electron';
 import { IPC, isHitMessage, type DogFrame } from '../shared/ipc';
+import { windowIcon } from './windowIcon';
 import { UI_PARTITION } from './network';
 
 export interface OverlayManager {
@@ -36,12 +37,14 @@ export function createOverlayManager(opts: { preload: string; load: (w: BrowserW
       resizable: false,
       fullscreenable: false,
       show: false,
+      icon: windowIcon(),
       webPreferences: {
         preload: opts.preload,
         partition: UI_PARTITION,
         contextIsolation: true,
         sandbox: true,
         nodeIntegration: false,
+        autoplayPolicy: 'no-user-gesture-required', // his sounds start without a click
       },
     });
     win.setAlwaysOnTop(true, 'screen-saver');

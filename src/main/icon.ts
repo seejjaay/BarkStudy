@@ -1,13 +1,13 @@
 /**
- * The tray icon, drawn in code so there is no image file to ship: a bread-brown roll with two darker ears, in BGRA
- * byte order as `nativeImage.createFromBitmap` expects on Windows.
+ * The app icon, drawn in code so there is no image file to ship: a bread-brown roll with two darker ears, in BGRA
+ * byte order as `nativeImage.createFromBitmap` expects on Windows. It is the tray icon and the window icon.
  */
 
 const FUR = [0x4b, 0x8b, 0xc9]; // B, G, R of #C98B4B
 const EAR = [0x2b, 0x5a, 0x8a]; // #8A5A2B
 const RIM = [0x12, 0x24, 0x3b]; // #3B2412
 
-export function makeTrayBitmap(size: number): Buffer {
+export function makeIcon(size: number): Buffer {
   const buf = Buffer.alloc(size * size * 4); // fully transparent to begin with
   const c = (size - 1) / 2;
   const body = size * 0.36;

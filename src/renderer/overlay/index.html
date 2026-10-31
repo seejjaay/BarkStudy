@@ -16,6 +16,8 @@
       #bubble { width: 320px; padding: 12px 14px; display: grid; gap: 8px; }
       #bubble[hidden], #bubble-chip[hidden], #bubble [hidden] { display: none !important; }
       #bubble .eyebrow { margin: 0; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #6f5a45; }
+      /* While Pandesal is talking his words take the eyebrow's place, so they read as speech and not as a label. */
+      #bubble .eyebrow[data-speech] { font-size: 13px; letter-spacing: normal; text-transform: none; font-style: italic; color: #3b2a1a; }
       #bubble .q { margin: 0; font-size: 17px; font-weight: 700; overflow-wrap: anywhere; max-height: 7.5em; overflow: auto; }
       #bubble .a { margin: 0; font-size: 15px; color: #9c5f23; overflow-wrap: anywhere; max-height: 6em; overflow: auto; }
       #bubble form { display: flex; gap: 6px; }
@@ -29,14 +31,28 @@
       #bubble .fb[data-tone='wrong']::before { content: '✗ '; }
       #bubble .hint { margin: 0; font-size: 11px; color: #6f5a45; }
       #bubble-chip { padding: 6px 12px; border-radius: 999px; font-size: 13px; }
+      /* His speech balloon: for show only, so the mouse goes straight through it. The tail points at him. */
+      #speech {
+        position: absolute; box-sizing: border-box; max-width: 240px; padding: 8px 12px; pointer-events: none;
+        font: 14px/1.4 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow-wrap: anywhere;
+        color: #3b2a1a; background: #fffaf1; border: 2px solid #3b2a1a; border-radius: 14px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+      }
+      #speech[hidden] { display: none; }
+      #speech::after {
+        content: ''; position: absolute; left: var(--tail-x, 50%); bottom: -7px; width: 10px; height: 10px; margin-left: -5px;
+        background: #fffaf1; border: 2px solid #3b2a1a; border-top: none; border-left: none; transform: rotate(45deg);
+      }
+      #speech[data-side='below']::after { bottom: auto; top: -7px; border: 2px solid #3b2a1a; border-bottom: none; border-right: none; }
       :focus-visible { outline: 3px solid #1f5fbf; outline-offset: 2px; }
       .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     </style>
   </head>
   <body>
     <canvas id="stage"></canvas>
+    <div id="speech" aria-hidden="true" hidden></div>
     <div id="bubble" role="dialog" aria-labelledby="bubble-q" hidden>
-      <p class="eyebrow">Pandesal asks</p>
+      <p id="bubble-eyebrow" class="eyebrow">Pandesal asks</p>
       <p id="bubble-q" class="q"></p>
       <form id="bubble-form" autocomplete="off">
         <label class="sr" for="bubble-input">Your answer</label>

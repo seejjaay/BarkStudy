@@ -1,16 +1,24 @@
+import { DEFAULT_TUNING } from '../engine/tuning';
+import type { Tuning } from '../engine/types';
 import type { BubbleState, RevealResult, SelfGrade, SubmitResult } from '../shared/bubble';
 import type { AppError, Result, SessionAction, SessionView, StartRequest, ViewCard } from '../shared/control';
+import type { SpeechLine } from '../shared/ipc';
 import { matchAnswer, type Match } from '../shared/matching';
 import type { Card } from '../shared/model';
+import { moodFromExpression } from '../shared/mood';
+import { soundFor, type SoundName } from '../shared/sounds';
 import type { Grade } from '../shared/srs';
 import { createEngineHost, type CardPrompt, type EngineHost, type ExternalEvent, type HostSink } from './engineHost';
-import type { Clock } from './dogHost';
+import type { Clock, DogAction } from './dogHost';
 import type { Library } from './library';
+import { createSoundGate } from './soundGate';
+import { createSpeechGate } from './speechGate';
 
 /**
  * One study session as the control window sees it: starts it from a deck, feeds answers and controls to the engine
  * host, saves each review as it happens, records the finished session in the history, and publishes a plain view of
- * all of it whenever that view changes. No Electron in here.
+ * all of it whenever that view changes. It is also the one place the engine's actions fan out to the presentation:
+ * the dog, the global Esc key, speech (through the speech gate) and sound (through the sound gate). No Electron in here.
  */
 
 export const VIEW_REFRESH_MS = 1000;
@@ -18,11 +26,16 @@ export const VIEW_REFRESH_MS = 1000;
 export const RE_ASK_EXPRESSION = 'pleading';
 export const MAX_TOPIC = 80;
 export const MAX_INTERVAL_MINUTES = 240;
+/** e2e only: how much fast tuning shrinks the check-in, escalation and guilt timings. Effect lengths stay real. */
+export const FAST_TUNING_FACTOR = 100;
 const STAY_MINUTES: readonly number[] = [15, 25, 50];
 
-export interface DogHooks {
-  walkTo?: (windowId: number) => void;
-  effect?: HostSink['effect'];
+/** Where the engine's actions are played out. Any part may be left out; tests leave out what they do not watch. */
+export interface SessionPresentation {
+  dog?: { perform(a: DogAction): void; setMood(name: string): void; sulkAfter(): void; setStay(on: boolean): void; wake(): void };
+  escape?: { effectStarted(maxMs: number): void; effectEnded(): void };
+  speech?: (line: SpeechLine) => void;
+  sound?: (name: SoundName, volume: number) => void;
 }
 
 export interface SessionControllerOptions {
@@ -31,7 +44,9 @@ export interface SessionControllerOptions {
   publish: (view: SessionView) => void;
   /** The bubble beside Pandesal: the question while one is pending, null otherwise. Sent only when it changes. */
   publishBubble?: (state: BubbleState | null) => void;
-  dog?: DogHooks;
+  presentation?: SessionPresentation;
+  /** e2e only: shrink the check-in, escalation and guilt timings FAST_TUNING_FACTOR times so a test can watch the ladder. */
+  fastTuning?: boolean;
   clock?: Clock;
 }
 
@@ -57,6 +72,8 @@ export interface SessionController {
   activeDeckId: () => string | null;
   /** Idle, away and suppression changes, and anything else the engine takes from outside. */
   dispatch: (e: ExternalEvent) => void;
+  /** The dog could not play or keep his effect (its window went away): it ends as Esc would end it, keeping the level. */
+  effectLost: () => void;
   setBusy: (busy: boolean) => void;
   setActiveWindow: (id: number | null) => void;
   /** Resolves when every review save started so far has finished (also before quitting). */
@@ -83,6 +100,9 @@ interface Active {
 export function createSessionController(opts: SessionControllerOptions): SessionController {
   const clock = opts.clock ?? defaultClock;
   const { library } = opts;
+  const show: SessionPresentation = opts.presentation ?? {};
+  const speechGate = createSpeechGate(clock);
+  const soundGate = createSoundGate(clock);
 
   let active: Active | null = null;
   let ended: Extract<SessionView, { phase: 'ended' }> | null = null;
@@ -93,6 +113,29 @@ export function createSessionController(opts: SessionControllerOptions): Session
   let lastBubble = '';
   let refreshHandle: unknown = null;
   const pending = new Set<Promise<unknown>>();
+  /** The effect the presentation was last told is running. */
+  let effect: 'laps' | 'dig' | null = null;
+  /** Whether the dog was last told he is on a Stay. */
+  let dogStay = false;
+  let lineId = 0;
+
+  /** Suppressed, paused, on a Stay or away: he makes no sound, and does not push the card back up. */
+  function quiet(): boolean {
+    const s = host.status();
+    return s.paused || s.stay || s.suppressed || s.activity !== 'active';
+  }
+
+  function play(name: SoundName | null): void {
+    if (name === null || !host.running || !show.sound) return;
+    const { soundOn, volume } = library.getSettings();
+    if (soundGate.pass(name, { soundOn, volume, quiet: quiet() })) show.sound(name, volume);
+  }
+
+  /** Lets go of Esc and forgets the effect, whatever the engine said: nothing may hold Esc past the session. */
+  function forgetEffect(): void {
+    effect = null;
+    show.escape?.effectEnded();
+  }
 
   const sink: HostSink = {
     showCard: (c: CardPrompt) => {
@@ -104,17 +147,40 @@ export function createSessionController(opts: SessionControllerOptions): Session
       card = null;
       publish();
     },
-    say: () => undefined,
+    say: (key, params) => {
+      // Params go through untouched: the guilt lines need their {minutes}.
+      if (!host.running || !show.speech || !speechGate.pass(key)) return;
+      lineId += 1;
+      show.speech(params ? { key, params, id: lineId } : { key, id: lineId });
+    },
     expression: (name) => {
       // The engine's "re-ask" intent asks again by pleading; it is the only intent that does. A dismissed bubble comes back.
       if (name === RE_ASK_EXPRESSION && card && !bubbleOpen) {
         bubbleOpen = true;
         publish();
       }
+      show.dog?.setMood(name);
+      play(soundFor({ kind: 'mood', mood: moodFromExpression(name) }));
     },
-    walkTo: (id) => opts.dog?.walkTo?.(id),
-    effect: (a) => opts.dog?.effect?.(a),
+    walkTo: (id) => show.dog?.perform({ type: 'WALK_TO', windowId: id }),
+    effect: (a) => {
+      show.dog?.perform(a);
+      if (a.type === 'RUN_LAPS' || a.type === 'START_DIG_IN') {
+        effect = a.type === 'RUN_LAPS' ? 'laps' : 'dig';
+        // The real maximum even under fast tuning, which never shortens an effect.
+        show.escape?.effectStarted(effect === 'laps' ? DEFAULT_TUNING.lapsMaxMs : DEFAULT_TUNING.digInMaxMs);
+        play(soundFor({ kind: 'effect', effect }));
+      } else if (a.type === 'END_EFFECT') {
+        const was = effect;
+        forgetEffect();
+        // He pops up with the card: a dig that ends with it still pending brings the bubble back, unless something is
+        // holding prompts back (Leave it, a Stay, suppression, away). An answer has already taken the card down here.
+        if (was === 'dig' && host.status().cardUp && !quiet()) openBubble();
+      }
+    },
     treat: () => undefined,
+    // The engine routes the answer's own expression first, so the dog keeps that mood a moment before he sulks.
+    guiltTrip: () => show.dog?.sulkAfter(),
   };
 
   const host: EngineHost = createEngineHost({
@@ -164,7 +230,16 @@ export function createSessionController(opts: SessionControllerOptions): Session
     return host.running && card ? { cardId: card.id, front: card.front, open: bubbleOpen } : null;
   }
 
+  /** Tells the dog when a Stay begins or ends, however it ends: lifted, run out, or the session over. */
+  function syncStay(): void {
+    const stay = host.running && host.status().stay;
+    if (stay === dogStay) return;
+    dogStay = stay;
+    show.dog?.setStay(stay);
+  }
+
   function publish(): void {
+    syncStay();
     const bubble = JSON.stringify(buildBubble());
     if (bubble !== lastBubble) {
       lastBubble = bubble;
@@ -199,6 +274,47 @@ export function createSessionController(opts: SessionControllerOptions): Session
     return Number.isFinite(lo) && Number.isFinite(hi) && lo >= 1 && hi >= lo && hi <= MAX_INTERVAL_MINUTES;
   }
 
+  function fastTuning(req: StartRequest): Partial<Tuning> | undefined {
+    if (!opts.fastTuning) return undefined;
+    const f = FAST_TUNING_FACTOR;
+    return {
+      checkinMinMs: (req.checkinMinMinutes * 60_000) / f,
+      checkinMaxMs: (req.checkinMaxMinutes * 60_000) / f,
+      firstEscalationMs: DEFAULT_TUNING.firstEscalationMs / f,
+      escalationStepMs: DEFAULT_TUNING.escalationStepMs / f,
+      guiltThresholdMs: DEFAULT_TUNING.guiltThresholdMs / f,
+    };
+  }
+
+  function openBubble(): void {
+    if (!host.running || !card || bubbleOpen) return;
+    bubbleOpen = true;
+    publish();
+  }
+
+  /**
+   * Leave it or the session's end: the engine sends no expression for either, so whatever he last felt (pleading and
+   * trailing the cursor, a whine) would last for good. He drops it, gets up from any curl, and goes back to roaming.
+   */
+  function calmDog(): void {
+    show.dog?.setMood('idle');
+    show.dog?.wake();
+  }
+
+  /** Away or suppressed: the engine curls him up then, and says nothing when it is over. */
+  function curledUpTime(): boolean {
+    const s = host.status();
+    return s.activity !== 'active' || s.suppressed;
+  }
+
+  function dispatch(e: ExternalEvent): void {
+    const wasCurled = host.running && curledUpTime();
+    host.dispatch(e);
+    // The user is back and nothing holds him back: he gets up. After the engine's own reaction, so a greeting keeps its mood.
+    if (wasCurled && host.running && !curledUpTime()) show.dog?.wake();
+    publish();
+  }
+
   return {
     start(req) {
       if (host.running) return fail('already-running', 'a session is already running');
@@ -220,6 +336,7 @@ export function createSessionController(opts: SessionControllerOptions): Session
         checkinMinMinutes: req.checkinMinMinutes,
         checkinMaxMinutes: req.checkinMaxMinutes,
         lastGuiltMs: library.lastGuiltMs(),
+        tuning: fastTuning(req),
       });
       scheduleRefresh();
       publish();
@@ -231,6 +348,11 @@ export function createSessionController(opts: SessionControllerOptions): Session
       stopRefresh();
       const finished = active;
       const summary = host.end();
+      // The engine's END_EFFECT has let go of Esc already if an effect was running; the dog leaves any Stay now, not
+      // after the history write below.
+      forgetEffect();
+      syncStay();
+      calmDog();
       card = null;
       active = null;
       const endedView = (saved: boolean): Extract<SessionView, { phase: 'ended' }> => ({
@@ -266,6 +388,7 @@ export function createSessionController(opts: SessionControllerOptions): Session
       switch (a.action) {
         case 'pause':
           host.dispatch({ type: 'PAUSE' });
+          calmDog();
           break;
         case 'resume':
           host.dispatch({ type: 'RESUME' });
@@ -297,11 +420,7 @@ export function createSessionController(opts: SessionControllerOptions): Session
       publish();
     },
 
-    openBubble() {
-      if (!host.running || !card || bubbleOpen) return;
-      bubbleOpen = true;
-      publish();
-    },
+    openBubble,
 
     submitText(text) {
       const current = card;
@@ -322,10 +441,10 @@ export function createSessionController(opts: SessionControllerOptions): Session
 
     activeDeckId: () => (host.running && active ? active.deckId : null),
 
-    dispatch(e) {
-      host.dispatch(e);
-      publish();
-    },
+    dispatch,
+    // From the dog's own tick, never from inside an action this session is fanning out. With no effect running (a
+    // report that lands just after the engine ended the effect itself) ESC_PRESSED does nothing.
+    effectLost: () => dispatch({ type: 'ESC_PRESSED' }),
     setBusy: (busy) => host.setBusy(busy),
     setActiveWindow: (id) => host.setActiveWindow(id),
 
@@ -336,6 +455,7 @@ export function createSessionController(opts: SessionControllerOptions): Session
     dispose() {
       stopRefresh();
       host.dispose();
+      forgetEffect();
     },
   };
 }

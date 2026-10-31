@@ -225,7 +225,7 @@ function RunningPanel({ session }: { session: Running }) {
             )}
           </>
         ) : (
-          <p className="muted">No question right now. Pandesal will check in on her own.</p>
+          <p className="muted">No question right now. Pandesal will check in on his own.</p>
         )}
       </div>
 

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { DeckSummary, Result, SessionView, StartRequest } from '../../src/shared/control';
-import { makeTrayBitmap } from '../../src/main/trayIcon';
+import { makeIcon } from '../../src/main/icon';
+import type { Settings } from '../../src/shared/settings';
 import {
   MAX_TRAY_DECKS,
   buildTrayMenu,
@@ -39,6 +40,8 @@ const inputs = (over: Partial<TrayInputs> = {}): TrayInputs => ({
   leaveItLabel: 'Ctrl+Alt+L',
   leaveItConflict: false,
   trackerDown: false,
+  soundOn: true,
+  volume: 0.4,
   ...over,
 });
 const flat = (items: MenuItemSpec[]): MenuItemSpec[] => items.flatMap((i) => [i, ...(i.submenu ? flat(i.submenu) : [])]);
@@ -100,7 +103,7 @@ describe('the menu when nothing is running', () => {
 describe('the menu during a session', () => {
   it('offers pause, a stay, ending, and no Start', () => {
     const menu = buildTrayMenu(inputs({ view: running() }));
-    expect(ids(menu)).toEqual(['pause', 'stay-on:15', 'stay-on:25', 'stay-on:50', 'end', 'open', 'quit']);
+    expect(ids(menu)).toEqual(['pause', 'stay-on:15', 'stay-on:25', 'stay-on:50', 'end', 'sound:off', 'volume:0.4', 'volume:0.65', 'volume:0.9', 'open', 'quit']);
     expect(menu.find((i) => i.id === 'pause')).toMatchObject({ label: 'Leave it (pause)', hint: 'Ctrl+Alt+L' });
   });
 
@@ -114,6 +117,41 @@ describe('the menu during a session', () => {
     const menu = buildTrayMenu(inputs({ view: running({ stay: true, stayLeftMs: 600_000 }) }));
     expect(ids(menu)).toContain('stay-off');
     expect(ids(menu).some((id) => id.startsWith('stay-on'))).toBe(false);
+  });
+});
+
+describe('sound controls in the menu', () => {
+  const sounds = (over: Partial<TrayInputs> = {}) => buildTrayMenu(inputs(over)).find((i) => i.label === 'Sounds');
+  const volume = (over: Partial<TrayInputs> = {}) => buildTrayMenu(inputs(over)).find((i) => i.label === 'Volume');
+
+  it('the menu shows Sounds checked or unchecked', () => {
+    expect(sounds({ soundOn: true })).toMatchObject({ kind: 'checkbox', checked: true, id: 'sound:off' });
+    expect(sounds({ soundOn: false })).toMatchObject({ kind: 'checkbox', checked: false, id: 'sound:on' });
+  });
+
+  it('the volume radio has the current level checked', () => {
+    expect(volume({ volume: 0.4 })?.submenu?.map((i) => [i.id, i.label, i.kind, i.checked])).toEqual([
+      ['volume:0.4', 'Low', 'radio', true],
+      ['volume:0.65', 'Medium', 'radio', false],
+      ['volume:0.9', 'High', 'radio', false],
+    ]);
+    expect(volume({ volume: 0.65 })?.submenu?.map((i) => i.checked)).toEqual([false, true, false]);
+    expect(volume({ volume: 0.9 })?.submenu?.map((i) => i.checked)).toEqual([false, false, true]);
+  });
+
+  it('a volume that is none of the three leaves the radio unchecked rather than claiming one', () => {
+    expect(volume({ volume: 0.5 })?.submenu?.map((i) => i.checked)).toEqual([false, false, false]);
+  });
+
+  it('they are there in every state of the session, and sit above Open and Quit', () => {
+    const ended: SessionView = { phase: 'ended', deckName: 'F', topic: '', startedAt: 0, endedAt: 1, answered: 0, treats: 0, longestWaitMs: 0, guiltTrips: 0, saved: true };
+    for (const view of [{ phase: 'idle' } as SessionView, running(), running({ paused: true }), ended]) {
+      const menu = buildTrayMenu(inputs({ view }));
+      const at = (label: string) => menu.findIndex((i) => i.label === label);
+      expect(at('Sounds'), JSON.stringify(view)).toBeGreaterThan(-1);
+      expect(at('Volume'), JSON.stringify(view)).toBe(at('Sounds') + 1);
+      expect(at('Open BarkStudy'), JSON.stringify(view)).toBeGreaterThan(at('Volume'));
+    }
   });
 });
 
@@ -145,11 +183,34 @@ describe('parseTrayAction', () => {
     ['stay-off', { kind: 'stay-off' }],
     ['stay-on:25', { kind: 'stay-on', minutes: 25 }],
     ['start:abc-123', { kind: 'start', deckId: 'abc-123' }],
+    ['sound:on', { kind: 'sound', on: true }],
+    ['sound:off', { kind: 'sound', on: false }],
+    ['volume:0.4', { kind: 'volume', level: 0.4 }],
+    ['volume:0.65', { kind: 'volume', level: 0.65 }],
+    ['volume:0.9', { kind: 'volume', level: 0.9 }],
   ])('%s', (id, action) => {
     expect(parseTrayAction(id)).toEqual(action);
   });
 
-  it.each(['', 'stay-on:7', 'stay-on:', 'start:', 'start:' + 'x'.repeat(201), 'rm -rf', 'OPEN', 'open ', 'stay-on:15;x'])('%j is refused', (id) => {
+  it.each([
+    '',
+    'stay-on:7',
+    'stay-on:',
+    'start:',
+    'start:' + 'x'.repeat(201),
+    'rm -rf',
+    'OPEN',
+    'open ',
+    'stay-on:15;x',
+    'volume:0.5',
+    'volume:1',
+    'volume:0.40',
+    'volume:',
+    'volume:0.4 ',
+    'sound:',
+    'sound:maybe',
+    'sound:on ',
+  ])('%j is refused', (id) => {
     expect(parseTrayAction(id)).toBeNull();
   });
 
@@ -161,7 +222,7 @@ describe('parseTrayAction', () => {
 
 describe('runTrayAction', () => {
   const okVoid: Result<void> = { ok: true, value: undefined };
-  function setup(over: { start?: Result<unknown>; end?: Result<unknown>; control?: Result<unknown> } = {}) {
+  function setup(over: { start?: Result<unknown>; end?: Result<unknown>; control?: Result<unknown>; update?: Result<unknown> } = {}) {
     const calls: string[] = [];
     const notify = vi.fn();
     const deps: TrayActionDeps = {
@@ -179,7 +240,13 @@ describe('runTrayAction', () => {
           return (over.control ?? okVoid) as Result<void>;
         }),
       },
-      library: { getSettings: () => ({ cap: 4, preset: 'classic', checkinMinMinutes: 7, checkinMaxMinutes: 21, excludedApps: [], leaveItHotkey: 'Ctrl+Alt+L' }) },
+      library: {
+        getSettings: () => ({ cap: 4, preset: 'classic', checkinMinMinutes: 7, checkinMaxMinutes: 21, excludedApps: [], leaveItHotkey: 'Ctrl+Alt+L', soundOn: true, volume: 0.4 }),
+        updateSettings: vi.fn((patch: Partial<Settings>) => {
+          calls.push(`settings:${JSON.stringify(patch)}`);
+          return Promise.resolve((over.update ?? { ok: true, value: {} }) as Result<Settings>);
+        }),
+      },
       openControl: () => calls.push('open'),
       quit: () => calls.push('quit'),
       notify,
@@ -208,6 +275,18 @@ describe('runTrayAction', () => {
     const { deps, calls } = setup();
     for (const a of [{ kind: 'end' }, { kind: 'open' }, { kind: 'quit' }] as const) await runTrayAction(a, deps);
     expect(calls).toEqual(['end', 'open', 'quit']);
+  });
+
+  it('sound and volume go to the library as a settings patch', async () => {
+    const { deps, calls } = setup();
+    for (const a of [{ kind: 'sound', on: false }, { kind: 'sound', on: true }, { kind: 'volume', level: 0.65 }] as const) await runTrayAction(a, deps);
+    expect(calls).toEqual(['settings:{"soundOn":false}', 'settings:{"soundOn":true}', 'settings:{"volume":0.65}']);
+  });
+
+  it('a settings change that cannot be saved tells the user instead of failing silently', async () => {
+    const { deps, notify } = setup({ update: { ok: false, error: { code: 'write-failed', message: 'x' } } });
+    await runTrayAction({ kind: 'sound', on: false }, deps);
+    expect(notify).toHaveBeenCalledWith('That did not work. Open BarkStudy for details.');
   });
 
   it('a start that cannot happen tells the user why instead of failing silently', async () => {
@@ -254,7 +333,7 @@ describe('toggleLeaveIt', () => {
 describe('the tray icon', () => {
   it('is a transparent square with an opaque roll in the middle and ears', () => {
     const size = 32;
-    const px = makeTrayBitmap(size);
+    const px = makeIcon(size);
     expect(px.length).toBe(size * size * 4);
     const alphaAt = (x: number, y: number) => px[(y * size + x) * 4 + 3];
     expect(alphaAt(0, 0)).toBe(0);
@@ -267,6 +346,6 @@ describe('the tray icon', () => {
   });
 
   it('works at the other sizes Windows asks for', () => {
-    for (const size of [16, 24, 48]) expect(makeTrayBitmap(size).length).toBe(size * size * 4);
+    for (const size of [16, 24, 48]) expect(makeIcon(size).length).toBe(size * size * 4);
   });
 });

@@ -29,3 +29,16 @@ export function placeBubble(dog: Rect, size: Size, viewport: Size): Placement {
   if (below <= maxY) return { x, y: below, side: 'below' };
   return { x, y: Math.min(maxY, Math.max(BUBBLE_MARGIN, above)), side: 'above' };
 }
+
+/** The smallest rectangle that holds all of `rects`; empty input gives a zero rect at the origin. */
+export function unionRects(rects: readonly Rect[]): Rect {
+  if (rects.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+  const x = Math.min(...rects.map((r) => r.x));
+  const y = Math.min(...rects.map((r) => r.y));
+  return {
+    x,
+    y,
+    width: Math.max(...rects.map((r) => r.x + r.width)) - x,
+    height: Math.max(...rects.map((r) => r.y + r.height)) - y,
+  };
+}

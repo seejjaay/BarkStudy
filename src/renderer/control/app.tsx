@@ -107,7 +107,7 @@ function Shell() {
       <main id="main" className="main" tabIndex={-1}>
         {trackerDown && (
           <div className="banner banner-warn" role="status">
-            <strong>Window tracking is off.</strong> Pandesal can&apos;t see your other windows, so she roams the edges of your screen instead. Restart BarkStudy to try again.
+            <strong>Window tracking is off.</strong> Pandesal can&apos;t see your other windows, so he roams the edges of your screen instead. Restart BarkStudy to try again.
           </div>
         )}
         {leaveIt.conflict && (

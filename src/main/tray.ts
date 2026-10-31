@@ -1,5 +1,5 @@
 import { Menu, Tray, nativeImage, type MenuItemConstructorOptions } from 'electron';
-import { makeTrayBitmap } from './trayIcon';
+import { makeIcon } from './icon';
 import { buildTrayMenu, parseTrayAction, trayTooltip, type MenuItemSpec, type TrayAction, type TrayInputs } from './trayModel';
 
 export interface AppTray {
@@ -16,6 +16,10 @@ function toTemplate(items: MenuItemSpec[], click: (id: string) => void): MenuIte
   return items.map((i): MenuItemConstructorOptions => {
     if (i.separator) return { type: 'separator' };
     const out: MenuItemConstructorOptions = { label: i.label, enabled: i.enabled !== false };
+    if (i.kind) {
+      out.type = i.kind;
+      out.checked = i.checked === true;
+    }
     if (i.hint) {
       out.accelerator = i.hint;
       out.registerAccelerator = false; // shown beside the label only; the real shortcut is registered globally elsewhere
@@ -32,7 +36,7 @@ function toTemplate(items: MenuItemSpec[], click: (id: string) => void): MenuIte
 function trayImage() {
   const image = nativeImage.createEmpty();
   for (const [size, scaleFactor] of [[16, 1], [24, 1.5], [32, 2], [48, 3]] as const) {
-    image.addRepresentation({ scaleFactor, width: size, height: size, buffer: makeTrayBitmap(size) });
+    image.addRepresentation({ scaleFactor, width: size, height: size, buffer: makeIcon(size) });
   }
   return image;
 }
@@ -44,7 +48,9 @@ export function createTray(opts: { inputs: () => TrayInputs; onAction: (action: 
 
   function run(id: string): void {
     const action = parseTrayAction(id);
-    if (action) opts.onAction(action);
+    if (!action) return;
+    lastKey = ''; // Electron flips a checkbox on click; the next refresh rebuilds so the menu shows what is really set
+    opts.onAction(action);
   }
 
   function refresh(): void {

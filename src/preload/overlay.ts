@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { BubbleState, RevealResult, SelfGrade, SubmitResult } from '../shared/bubble';
-import { IPC, type BarkOverlayApi, type DogFrame } from '../shared/ipc';
+import { IPC, type BarkOverlayApi, type DogFrame, type SoundCue, type SpeechLine } from '../shared/ipc';
 
 const api: BarkOverlayApi = {
   onFrame: (cb) => {
@@ -26,6 +26,12 @@ const api: BarkOverlayApi = {
   },
   focus: (on) => {
     ipcRenderer.send(IPC.bubbleFocus, on);
+  },
+  onSpeech: (cb) => {
+    ipcRenderer.on(IPC.speechSay, (_event, line: SpeechLine) => cb(line));
+  },
+  onSound: (cb) => {
+    ipcRenderer.on(IPC.soundPlay, (_event, cue: SoundCue) => cb(cue));
   },
 };
 

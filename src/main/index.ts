@@ -6,12 +6,13 @@ import { BUBBLE_HOTKEY } from '../shared/bubble';
 import { CONTROL_CHANNEL, type AppStatus } from '../shared/control';
 import type { DisplayInfo, RawWindow } from '../shared/geometry';
 import { toDipWindows } from '../shared/geometry';
-import { IPC } from '../shared/ipc';
+import { IPC, type SoundCue } from '../shared/ipc';
 import { createBubbleHost } from './bubbleHost';
 import { createControlHandlers } from './controlHandlers';
 import { createControlWindow } from './controlWindow';
-import { installDebug } from './debug';
+import { createDebugRecorder, installDebug, type Hotkeys } from './debug';
 import { createDogHost } from './dogHost';
+import { createEscapeKey } from './escapeKey';
 import { createFileAccess } from './files';
 import { createIdleMonitor } from './idle';
 import { createLeaveIt } from './leaveIt';
@@ -33,6 +34,11 @@ const e2e = process.env['BARKSTUDY_E2E'] === '1' && !app.isPackaged;
 
 // Tests must never touch the real decks and history.
 if (e2e) app.setPath('userData', process.env['BARKSTUDY_USER_DATA'] ?? join(tmpdir(), `barkstudy-e2e-${process.pid}`));
+
+// The engine picks between intents at random (laps or a whine at level 3); an e2e test pins the seed so the ladder it
+// watches is always the same one.
+const e2eSeed = e2e ? Number.parseInt(process.env['BARKSTUDY_SEED'] ?? '', 10) : Number.NaN;
+const seed = (): number => (Number.isSafeInteger(e2eSeed) ? e2eSeed : Date.now() % 2 ** 31);
 
 const toInfo = (d: Display): DisplayInfo => ({ id: d.id, bounds: d.bounds, workArea: d.workArea, scaleFactor: d.scaleFactor });
 
@@ -67,22 +73,54 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
     appTray.refresh();
   };
 
+  // What the e2e tests read back (moods, lines, shortcuts); null outside e2e, so nothing is recorded in real use.
+  const recorder = e2e ? createDebugRecorder() : null;
+  // The one adapter every global shortcut goes through: the bubble's, Leave it's and Esc's.
+  const electronHotkeys: Hotkeys = {
+    register: (accelerator, onPress) => globalShortcut.register(accelerator, onPress),
+    unregister: (accelerator) => globalShortcut.unregister(accelerator),
+  };
+  const hotkeys = recorder ? recorder.hotkeys(electronHotkeys) : electronHotkeys;
+
+  // The session is created below; the dog only reports a lost effect from his own tick, long after this has all run.
+  const dogHost = createDogHost({
+    seed: Date.now() % 2 ** 31,
+    sink: {
+      send: (id, frame) => {
+        overlays.send(id, frame);
+        recorder?.frame(frame);
+      },
+    },
+    cursor: () => screen.getCursorScreenPoint(),
+    onEffectLost: () => studySession.effectLost(),
+  });
+  // Esc is held only while an effect runs; a press ends the effect and keeps the level.
+  const escapeKey = createEscapeKey({ hotkeys, onPress: () => studySession.dispatch({ type: 'ESC_PRESSED' }) });
+
   const studySession = createSessionController({
     library,
-    seed: Date.now() % 2 ** 31,
+    seed: seed(),
     publish: (view) => {
       controlWindow.send({ type: 'session', view });
       appTray.refresh();
     },
     publishBubble: (state) => bubble.onBubbleChanged(state),
+    // Speech and sound go to every overlay; only the one that has him (a non-null frame) shows or plays them.
+    presentation: {
+      dog: dogHost,
+      escape: escapeKey,
+      speech: (line) => {
+        overlays.broadcast(IPC.speechSay, line);
+        recorder?.speech(line);
+      },
+      sound: (name, volume) => overlays.broadcast(IPC.soundPlay, { name, volume } satisfies SoundCue),
+    },
+    fastTuning: e2e && process.env['BARKSTUDY_FAST_TUNING'] === '1',
   });
   // Leave it is registered from the saved setting, and is always on; the tray menu offers the same action.
   const leaveIt = createLeaveIt({
     session: studySession,
-    hotkeys: {
-      register: (accelerator, onPress) => globalShortcut.register(accelerator, onPress),
-      unregister: (accelerator) => globalShortcut.unregister(accelerator),
-    },
+    hotkeys,
     notify,
     onConflictChange: () => publishStatus(),
   });
@@ -93,6 +131,8 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       leaveItLabel: leaveIt.accelerator ?? library.getSettings().leaveItHotkey,
       leaveItConflict: leaveIt.conflict,
       trackerDown,
+      soundOn: library.getSettings().soundOn,
+      volume: library.getSettings().volume,
     }),
     onOpen: () => controlWindow.show(),
     onAction: (action) =>
@@ -105,10 +145,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       isOverlay: (sender) => overlays.isOverlay(sender as WebContents),
       setFocus: (sender, on) => overlays.setFocus(sender as WebContents, on),
     },
-    hotkeys: {
-      register: (accelerator, onPress) => globalShortcut.register(accelerator, onPress),
-      unregister: (accelerator) => globalShortcut.unregister(accelerator),
-    },
+    hotkeys,
   });
   for (const channel of [IPC.bubbleSubmit, IPC.bubbleReveal, IPC.bubbleGrade]) {
     ipcMain.handle(channel, (event, payload: unknown) => bubble.handle(channel, event.sender, payload));
@@ -136,7 +173,8 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
     emit: (on) => studySession.dispatch({ type: 'SUPPRESS_CHANGED', on }),
   });
   const idle = createIdleMonitor({
-    idleSeconds: () => powerMonitor.getSystemIdleTime(),
+    // Under e2e the user always counts as present, so a test never starts 'away' because the machine sat idle.
+    idleSeconds: () => (e2e ? 0 : powerMonitor.getSystemIdleTime()),
     tuning: DEFAULT_TUNING,
     onActivity: (state) => studySession.dispatch({ type: 'USER_ACTIVITY', state }),
     onBusy: (busy) => studySession.setBusy(busy),
@@ -144,7 +182,6 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
   powerMonitor.on('lock-screen', () => idle.setLocked(true));
   powerMonitor.on('unlock-screen', () => idle.setLocked(false));
 
-  const dogHost = createDogHost({ seed: Date.now() % 2 ** 31, sink: { send: (id, frame) => overlays.send(id, frame) } });
   let rawWindows: RawWindow[] = [];
 
   function pushWorld(): void {
@@ -189,7 +226,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
   // The tray is the way out now: the overlay is click-through, so there is nothing to close.
   leaveIt.register(library.getSettings().leaveItHotkey);
   appTray.refresh();
-  if (e2e) {
+  if (e2e && recorder) {
     installDebug({
       dogHost,
       tracker,
@@ -198,6 +235,9 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       bubbleHotkeyRegistered: () => globalShortcut.isRegistered(BUBBLE_HOTKEY),
       tray: appTray,
       leaveIt,
+      escapeKey,
+      recorder,
+      library,
     });
   }
 
@@ -222,6 +262,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       tracker.stop();
       idle.stop();
       studySession.dispose();
+      escapeKey.dispose();
       bubble.dispose();
       leaveIt.dispose();
       appTray.dispose();

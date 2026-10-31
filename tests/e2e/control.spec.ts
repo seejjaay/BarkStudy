@@ -332,7 +332,52 @@ test('a blank answer is not submitted, and an answer given in the control window
   await expect(bubble).toBeHidden();
 });
 
-type Spec = { id?: string; label: string; enabled?: boolean; submenu?: Spec[]; hint?: string };
+/** What main will broadcast: a line key (never text) to every overlay. */
+const saySpeech = (line: { key: string; params?: Record<string, number>; id: number }) =>
+  app!.evaluate(({ BrowserWindow }, l) => {
+    for (const w of BrowserWindow.getAllWindows()) if (w.webContents.getURL().includes('overlay')) w.webContents.send('speech:say', l);
+  }, line);
+
+test('his words go in the eyebrow of an open bubble or in a balloon, last about 4 s, and are hidden from screen readers', async () => {
+  await newDeckByPaste('Capitals', 'France,Paris');
+  await nav('Study').click();
+  await page.getByRole('button', { name: 'Start session' }).click();
+  await debug('checkin');
+  const bubble = overlay().locator('#bubble');
+  const eyebrow = overlay().locator('#bubble-eyebrow');
+  const balloon = overlay().locator('#speech');
+  await expect(bubble).toBeVisible();
+  await expect(eyebrow).toHaveText('Pandesal asks');
+  await expect(balloon).toBeHidden();
+
+  // The bubble is open: the words replace the eyebrow, and there is no balloon.
+  await saySpeech({ key: 'line.guilt.1', params: { minutes: 6 }, id: 1 });
+  await expect(eyebrow).toContainText('6 minutes');
+  await expect(eyebrow).toHaveAttribute('aria-hidden', 'true');
+  await expect(balloon).toBeHidden();
+
+  // The bubble is hidden (a chip is left): a balloon shows, above the chip, and the mouse can go through it.
+  await overlay().keyboard.press('Escape');
+  await expect(bubble).toBeHidden();
+  const chip = overlay().locator('#bubble-chip');
+  await expect(chip).toBeVisible();
+  await saySpeech({ key: 'line.celebrateSmall.1', id: 2 });
+  await expect(balloon).toBeVisible();
+  await expect(balloon).toHaveAttribute('aria-hidden', 'true');
+  await expect(balloon).toHaveCSS('pointer-events', 'none');
+  const [b, c] = [await balloon.boundingBox(), await chip.boundingBox()];
+  expect(b!.y + b!.height).toBeLessThanOrEqual(c!.y);
+
+  // A key with no text says nothing, and the line expires by itself.
+  await saySpeech({ key: 'line.nope.1', id: 3 });
+  await expect(balloon).toBeHidden({ timeout: 8000 });
+  await chip.click();
+  await expect(bubble).toBeVisible();
+  await expect(eyebrow).toHaveText('Pandesal asks');
+  expect(await eyebrow.getAttribute('aria-hidden')).toBeNull();
+});
+
+type Spec = { id?: string; label: string; enabled?: boolean; submenu?: Spec[]; hint?: string; kind?: string; checked?: boolean };
 const flatSpec = (items: Spec[]): Spec[] => items.flatMap((i) => [i, ...(i.submenu ? flatSpec(i.submenu) : [])]);
 const trayLabels = async () => flatSpec(await debug<Spec[]>('trayMenu')).map((i) => i.label);
 const trayIds = async () => flatSpec(await debug<Spec[]>('trayMenu')).flatMap((i) => (i.id ? [i.id] : []));
@@ -351,7 +396,7 @@ test('the tray menu follows the app: it starts a session, pauses, stays, and end
   await nav('Study').click();
   await expect(page.getByText('Running', { exact: true })).toBeVisible();
   await expect.poll(trayLabels).toContain('Studying Capitals');
-  expect(await trayIds()).toEqual(['pause', 'stay-on:15', 'stay-on:25', 'stay-on:50', 'end', 'open', 'quit']);
+  expect(await trayIds()).toEqual(['pause', 'stay-on:15', 'stay-on:25', 'stay-on:50', 'end', 'sound:off', 'volume:0.4', 'volume:0.65', 'volume:0.9', 'open', 'quit']);
 
   await debug('trayRun', 'pause');
   await expect(page.getByText('Paused', { exact: true })).toBeVisible();
@@ -372,6 +417,105 @@ test('the tray menu follows the app: it starts a session, pauses, stays, and end
   await expect.poll(trayLabels).toContain('Start session');
   await nav('History').click();
   await expect(page.getByRole('row').filter({ hasText: 'Capitals' })).toBeVisible();
+});
+
+test('Sounds and Volume in the tray are saved, show what is set, and are still set after a restart', async () => {
+  const sounds = async () => (await debug<Spec[]>('trayMenu')).find((i) => i.label === 'Sounds');
+  const volumes = async () => (await debug<Spec[]>('trayMenu')).find((i) => i.label === 'Volume')?.submenu?.map((i) => [i.label, i.checked]);
+  expect(await sounds()).toMatchObject({ id: 'sound:off', kind: 'checkbox', checked: true }); // on by default
+  expect(await volumes()).toEqual([['Low', true], ['Medium', false], ['High', false]]);
+
+  await debug('trayRun', 'sound:off');
+  await debug('trayRun', 'volume:0.9');
+  // A click is carried out a moment later (the settings are written first), so each is waited for.
+  await expect.poll(sounds).toMatchObject({ id: 'sound:on', checked: false });
+  await expect.poll(volumes).toEqual([['Low', false], ['Medium', false], ['High', true]]);
+  await debug('trayRun', 'volume:0.5'); // not one of the three: ignored
+  expect(await volumes()).toEqual([['Low', false], ['Medium', false], ['High', true]]);
+
+  await quit();
+  await launch();
+  expect(await sounds()).toMatchObject({ id: 'sound:on', checked: false });
+  expect(await volumes()).toEqual([['Low', false], ['Medium', false], ['High', true]]);
+});
+
+interface AudioLog {
+  contexts: number;
+  started: number;
+  stopped: number;
+  loops: number;
+}
+
+/** Counts what the overlay's Web Audio is asked to do, without changing it. */
+const watchAudio = () =>
+  overlay().evaluate(() => {
+    const log: AudioLog = { contexts: 0, started: 0, stopped: 0, loops: 0 };
+    (window as unknown as { __audio: AudioLog }).__audio = log;
+    const Real = window.AudioContext;
+    window.AudioContext = class extends Real {
+      constructor() {
+        super();
+        log.contexts++;
+        (window as unknown as { __audioCtx: AudioContext }).__audioCtx = this;
+      }
+    };
+    // The originals are called back with their own `this`. A buffer source has its own start (it takes an offset too).
+    const wrap = (target: object, name: 'start' | 'stop', onCall: (self: { loop?: boolean }) => void) => {
+      const original = Reflect.get(target, name) as (...args: unknown[]) => void;
+      Reflect.set(target, name, function (this: { loop?: boolean }, ...args: unknown[]) {
+        onCall(this);
+        original.apply(this, args);
+      });
+    };
+    const onStart = (self: { loop?: boolean }) => {
+      log.started++;
+      if (self.loop === true) log.loops++;
+    };
+    wrap(AudioScheduledSourceNode.prototype, 'start', onStart);
+    if (Object.hasOwn(AudioBufferSourceNode.prototype, 'start')) wrap(AudioBufferSourceNode.prototype, 'start', onStart);
+    wrap(AudioScheduledSourceNode.prototype, 'stop', () => log.stopped++);
+  });
+const audioLog = () => overlay().evaluate(() => (window as unknown as { __audio: AudioLog }).__audio);
+const audioState = () => overlay().evaluate(() => (window as unknown as { __audioCtx?: AudioContext }).__audioCtx?.state);
+
+/** What main will broadcast: a sound name and volume to every overlay. `withoutHim` first tells the overlay it has no dog, as one on another display would. */
+const sendSound = (cue: { name: string; volume: number }, withoutHim = false) =>
+  app!.evaluate(
+    ({ BrowserWindow }, c) => {
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.webContents.getURL().includes('overlay')) continue;
+        if (c.withoutHim) w.webContents.send('overlay:frame', null);
+        w.webContents.send('sound:play', { name: c.name, volume: c.volume });
+      }
+    },
+    { ...cue, withoutHim },
+  );
+
+test('a sound is played through Web Audio by the overlay that has him, one context for all of them, and by no overlay that does not', async () => {
+  await newDeckByPaste('Capitals', 'France,Paris');
+  await nav('Study').click();
+  await page.getByRole('button', { name: 'Start session' }).click();
+  // The balloon shows only on an overlay that holds a frame of him, so seeing it means this overlay has him.
+  await saySpeech({ key: 'line.celebrateSmall.1', id: 1 });
+  await expect(overlay().locator('#speech')).toBeVisible();
+  await watchAudio();
+  expect(await audioLog()).toEqual({ contexts: 0, started: 0, stopped: 0, loops: 0 }); // nothing is made until the first sound
+
+  await sendSound({ name: 'bark', volume: 0.4 });
+  await expect.poll(async () => (await audioLog()).started).toBeGreaterThan(0);
+  const first = await audioLog();
+  expect(first).toMatchObject({ contexts: 1, loops: 0 });
+  expect(first.stopped).toBe(first.started); // every piece is given a hard stop
+  await expect.poll(audioState).toBe('running'); // the overlay's autoplay policy lets it start without a click
+
+  await sendSound({ name: 'yip', volume: 0.4 });
+  await expect.poll(async () => (await audioLog()).started).toBeGreaterThan(first.started);
+  expect((await audioLog()).contexts).toBe(1);
+
+  const before = await audioLog();
+  await sendSound({ name: 'whine', volume: 0.4 }, true);
+  await overlay().evaluate(() => new Promise((resolve) => setTimeout(resolve, 400)));
+  expect(await audioLog()).toEqual(before);
 });
 
 test('a Leave it shortcut that another app owns shows a banner and a tray note, and clears when it is freed', async () => {
