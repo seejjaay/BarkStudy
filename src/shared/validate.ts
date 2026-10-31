@@ -48,7 +48,12 @@ export function isSettings(v: unknown): v is Settings {
     isArrayOf(v['excludedApps'], isStr) &&
     isStr(v['leaveItHotkey']) &&
     (v['soundOn'] === undefined || typeof v['soundOn'] === 'boolean') &&
-    (v['volume'] === undefined || (isNum(v['volume']) && v['volume'] >= 0 && v['volume'] <= 1))
+    (v['volume'] === undefined || (isNum(v['volume']) && v['volume'] >= 0 && v['volume'] <= 1)) &&
+    (v['onboarded'] === undefined || typeof v['onboarded'] === 'boolean') &&
+    (v['reducedMotion'] === undefined || v['reducedMotion'] === 'system' || v['reducedMotion'] === 'on' || v['reducedMotion'] === 'off') &&
+    (v['updateChecks'] === undefined || typeof v['updateChecks'] === 'boolean') &&
+    (v['betaChannel'] === undefined || typeof v['betaChannel'] === 'boolean') &&
+    (v['bubbleHotkey'] === undefined || isStr(v['bubbleHotkey']))
   );
 }
 

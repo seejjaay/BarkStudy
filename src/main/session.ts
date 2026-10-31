@@ -11,6 +11,7 @@ import type { Grade } from '../shared/srs';
 import { createEngineHost, type CardPrompt, type EngineHost, type ExternalEvent, type HostSink } from './engineHost';
 import type { Clock, DogAction } from './dogHost';
 import type { Library } from './library';
+import { MAX_INTERVAL_MINUTES } from '../shared/settings';
 import { createSoundGate } from './soundGate';
 import { createSpeechGate } from './speechGate';
 
@@ -25,7 +26,6 @@ export const VIEW_REFRESH_MS = 1000;
 /** What the engine's personality layer sets for its "re-ask" intent (see EXPRESSION in engine/personality.ts). */
 export const RE_ASK_EXPRESSION = 'pleading';
 export const MAX_TOPIC = 80;
-export const MAX_INTERVAL_MINUTES = 240;
 /** e2e only: how much fast tuning shrinks the check-in, escalation and guilt timings. Effect lengths stay real. */
 export const FAST_TUNING_FACTOR = 100;
 const STAY_MINUTES: readonly number[] = [15, 25, 50];

@@ -73,7 +73,7 @@ describe('settings', () => {
   const preM4Data = { cap: 3, preset: 'drama-queen', checkinMinMinutes: 7, checkinMaxMinutes: 20, excludedApps: ['zoom.exe'], leaveItHotkey: 'Ctrl+Alt+K' };
   const preM4 = JSON.stringify({ schemaVersion: 1, data: preM4Data });
 
-  it('a settings.json from before M4 loads with soundOn true and volume 0.4 and is not set aside', async () => {
+  it('a settings.json from before M4 loads with every newer setting at its default and is not set aside', async () => {
     fs.writeFileSync(join(dir, 'settings.json'), preM4);
     const lib = await open();
     expect(lib.notices()).toEqual([]);
@@ -86,6 +86,11 @@ describe('settings', () => {
       leaveItHotkey: 'Ctrl+Alt+K',
       soundOn: true,
       volume: 0.4,
+      onboarded: false,
+      reducedMotion: 'system',
+      updateChecks: true,
+      betaChannel: false,
+      bubbleHotkey: 'Control+Alt+A',
     });
     expect(fs.readFileSync(join(dir, 'settings.json'), 'utf8')).toBe(preM4);
     const backups = join(dir, 'backups');
