@@ -1,4 +1,5 @@
 import type { LibrarySnapshot } from '../../shared/control';
+import { COMMON as C, HISTORY as T } from '../../shared/i18n/en';
 import { formatDuration, formatWhen } from './text';
 
 export function HistoryView({ snapshot }: { snapshot: LibrarySnapshot }) {
@@ -7,31 +8,31 @@ export function HistoryView({ snapshot }: { snapshot: LibrarySnapshot }) {
   return (
     <section aria-labelledby="history-title">
       <header className="page-head">
-        <h1 id="history-title">History</h1>
+        <h1 id="history-title">{T.title}</h1>
       </header>
       {sessions.length === 0 ? (
         <div className="empty">
-          <h2>No sessions yet</h2>
-          <p className="muted">When you finish a study session it shows up here, with how many cards you answered and how long Pandesal waited.</p>
+          <h2>{T.emptyTitle}</h2>
+          <p className="muted">{T.emptyBody}</p>
         </div>
       ) : (
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th scope="col">When</th>
-                <th scope="col">Deck</th>
-                <th scope="col">Topic</th>
-                <th scope="col">Length</th>
+                <th scope="col">{T.when}</th>
+                <th scope="col">{T.deck}</th>
+                <th scope="col">{T.topic}</th>
+                <th scope="col">{T.length}</th>
                 <th scope="col" className="num">
-                  Answered
+                  {C.answered}
                 </th>
                 <th scope="col" className="num">
-                  Treats
+                  {C.treats}
                 </th>
-                <th scope="col">Longest wait</th>
+                <th scope="col">{C.longestWait}</th>
                 <th scope="col" className="num">
-                  Guilt trips
+                  {C.guiltTrips}
                 </th>
               </tr>
             </thead>
@@ -39,7 +40,7 @@ export function HistoryView({ snapshot }: { snapshot: LibrarySnapshot }) {
               {sessions.map((s) => (
                 <tr key={s.id}>
                   <td>{formatWhen(s.startedAt, now)}</td>
-                  <td>{s.deckName ?? <span className="muted">Deleted deck</span>}</td>
+                  <td>{s.deckName ?? <span className="muted">{T.deletedDeck}</span>}</td>
                   <td>{s.topic || <span className="muted">—</span>}</td>
                   <td>{formatDuration(s.endedAt - s.startedAt)}</td>
                   <td className="num">{s.answered}</td>

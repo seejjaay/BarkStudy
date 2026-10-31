@@ -1,12 +1,12 @@
 import type { LinkId } from '../../shared/control';
+import { ABOUT as T } from '../../shared/i18n/en';
 import { api, attempt, describe } from './api';
-import { ONBOARDING_TEXT as T } from './text';
 import { useToast } from './toast';
 
 const LINKS: { id: LinkId; label: string }[] = [
-  { id: 'repo', label: 'Project page on GitHub' },
-  { id: 'releases', label: 'Releases' },
-  { id: 'license', label: 'License' },
+  { id: 'repo', label: T.links.repo },
+  { id: 'releases', label: T.links.releases },
+  { id: 'license', label: T.links.license },
 ];
 
 export function AboutPage({ version, onRunSetup }: { version: string; onRunSetup: () => void }) {
@@ -20,14 +20,14 @@ export function AboutPage({ version, onRunSetup }: { version: string; onRunSetup
   return (
     <section aria-labelledby="about-title" className="about">
       <header className="page-head">
-        <h1 id="about-title">About BarkStudy</h1>
+        <h1 id="about-title">{T.title}</h1>
       </header>
       <div className="card-panel settings-section">
         <p>
-          <strong>BarkStudy {version}</strong>
+          <strong>{T.version(version)}</strong>
         </p>
-        <p>{T.aboutBlurb}</p>
-        <p className="hint">{T.aboutLicense}</p>
+        <p>{T.blurb}</p>
+        <p className="hint">{T.license}</p>
         <div className="actions">
           {LINKS.map((l) => (
             <button key={l.id} type="button" className="btn" onClick={() => void open(l.id)}>
@@ -37,11 +37,11 @@ export function AboutPage({ version, onRunSetup }: { version: string; onRunSetup
         </div>
       </div>
       <div className="card-panel settings-section">
-        <h2>Setup</h2>
-        <p className="hint">Walk through the first-run screens again: personality, the way to stop him, privacy and the starter deck.</p>
+        <h2>{T.setupTitle}</h2>
+        <p className="hint">{T.setupHint}</p>
         <div className="actions">
           <button type="button" className="btn" onClick={onRunSetup}>
-            Run setup again
+            {T.setupAgain}
           </button>
         </div>
       </div>

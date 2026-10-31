@@ -129,6 +129,8 @@ function parseStart(v: unknown): StartRequest | null {
   return { deckId, topic, checkinMinMinutes, checkinMaxMinutes };
 }
 
+const MAX_PATCH_APPS = 1000;
+
 /** Only the settings the settings page may change; anything else, an empty patch, or a wrong type is refused. */
 function parsePatch(v: unknown): SettingsPatch | null {
   const a = rec(v);
@@ -147,7 +149,8 @@ function parsePatch(v: unknown): SettingsPatch | null {
         if (typeof x !== 'number') return null;
         break;
       case 'excludedApps':
-        if (!Array.isArray(x) || !x.every((item) => typeof item === 'string')) return null;
+        // Far past the 100 that can be saved: refused here so a huge list is never normalised just to be refused.
+        if (!Array.isArray(x) || x.length > MAX_PATCH_APPS || !x.every((item) => typeof item === 'string')) return null;
         break;
       case 'soundOn':
       case 'updateChecks':

@@ -163,6 +163,17 @@ describe('settings:update', () => {
     expect(lib.getSettings().checkinMinMinutes).toBe(5);
     expect(motion).toEqual([]);
   });
+
+  it('says which setting was the problem', async () => {
+    const r = await call<Result<Settings>>('settings:update', { checkinMinMinutes: 30, checkinMaxMinutes: 10 });
+    expect(!r.ok && r.error.reason).toBe('bad-interval');
+  });
+
+  it('refuses an excluded-apps list too long to be worth checking', async () => {
+    const r = await call<Result<Settings>>('settings:update', { excludedApps: Array(1001).fill('a.exe') });
+    expect(codeOf(r)).toBe('invalid-request');
+    expect(!r.ok && r.error.reason).toBeUndefined();
+  });
 });
 
 describe('settings:hotkey', () => {

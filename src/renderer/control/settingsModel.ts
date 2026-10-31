@@ -1,5 +1,6 @@
 import type { TraitPreset } from '../../engine/tuning';
 import type { Cap } from '../../engine/types';
+import { SETTINGS as T } from '../../shared/i18n/en';
 import { normalizeExcluded, type ReducedMotionSetting } from '../../shared/settings';
 import { MAX_GAP, MIN_GAP, wholeMinutes } from './sessionState';
 
@@ -11,10 +12,10 @@ export type IntervalParse = { ok: true; min: number; max: number } | { ok: false
 export function parseInterval(min: string, max: string): IntervalParse {
   const lo = wholeMinutes(min);
   const hi = wholeMinutes(max);
-  if (lo === null || hi === null) return { ok: false, message: 'Use whole minutes, such as 5 and 15.' };
-  if (lo < MIN_GAP) return { ok: false, message: `The shortest gap is ${MIN_GAP} minute.` };
-  if (hi > MAX_GAP) return { ok: false, message: `The longest gap is ${MAX_GAP} minutes.` };
-  if (hi < lo) return { ok: false, message: 'The longest gap cannot be shorter than the shortest.' };
+  if (lo === null || hi === null) return { ok: false, message: T.intervalWhole };
+  if (lo < MIN_GAP) return { ok: false, message: T.intervalShortest(MIN_GAP) };
+  if (hi > MAX_GAP) return { ok: false, message: T.intervalLongest(MAX_GAP) };
+  if (hi < lo) return { ok: false, message: T.intervalOrder };
   return { ok: true, min: lo, max: hi };
 }
 
@@ -32,19 +33,19 @@ interface Option<T> {
 }
 
 export const CAP_OPTIONS: readonly Option<Cap>[] = [
-  { value: 2, label: 'Gentle', hint: 'He asks politely and whines when you take your time. Nothing more.' },
-  { value: 3, label: 'Playful', hint: 'Adds zoomies: he runs laps around the window you are using.' },
-  { value: 4, label: 'Full dog', hint: 'Adds dig-in: he digs at the window and puts the question in front of you until you answer or press Esc.' },
+  { value: 2, ...T.caps.gentle },
+  { value: 3, ...T.caps.playful },
+  { value: 4, ...T.caps.full },
 ];
 
 export const PRESET_OPTIONS: readonly Option<TraitPreset>[] = [
-  { value: 'calm', label: 'Calm', hint: 'Patient and quiet. He gives you plenty of time before he fusses.' },
-  { value: 'classic', label: 'Classic', hint: 'A bit of everything. The way Pandesal is meant to be.' },
-  { value: 'drama-queen', label: 'Drama queen', hint: 'Needy and theatrical. He escalates fast and sulks loudly.' },
+  { value: 'calm', ...T.presets.calm },
+  { value: 'classic', ...T.presets.classic },
+  { value: 'drama-queen', ...T.presets.dramaQueen },
 ];
 
 export const MOTION_OPTIONS: readonly Option<ReducedMotionSetting>[] = [
-  { value: 'system', label: 'Follow Windows', hint: 'Uses the "Show animations" setting in Windows.' },
-  { value: 'on', label: 'Always reduce motion', hint: 'He walks slowly, and zoomies do not run laps.' },
-  { value: 'off', label: 'Never reduce motion', hint: 'Full speed, whatever Windows says.' },
+  { value: 'system', ...T.motions.system },
+  { value: 'on', ...T.motions.on },
+  { value: 'off', ...T.motions.off },
 ];

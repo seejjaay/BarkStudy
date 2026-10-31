@@ -1,6 +1,6 @@
 import type { SkippedRow } from './deckParse';
 import type { Card, Deck, SessionRecord } from './model';
-import type { Settings } from './settings';
+import type { Settings, SettingsReason } from './settings';
 import type { Grade } from './srs';
 
 /**
@@ -37,6 +37,8 @@ export interface AppError {
   message: string;
   /** `no-valid-rows` only: why each line was left out. */
   skipped?: SkippedRow[];
+  /** A refused settings change only: which part of it was the problem. */
+  reason?: SettingsReason;
 }
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: AppError };
@@ -73,7 +75,7 @@ export interface ImportReport {
 
 export interface Notice {
   store: 'decks' | 'settings' | 'history';
-  kind: 'recovered' | 'migrated' | 'unavailable';
+  kind: 'recovered' | 'migrated' | 'unavailable' | 'repaired';
   detail: string;
 }
 

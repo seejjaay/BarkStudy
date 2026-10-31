@@ -2,12 +2,12 @@ import { useCallback, useEffect, useId, useState } from 'react';
 import type { Cap } from '../../engine/types';
 import { acceleratorLabel } from '../../shared/accelerator';
 import type { Result, SettingsPatch, SettingsView } from '../../shared/control';
+import { COMMON as C, SETTINGS as T } from '../../shared/i18n/en';
 import { DEFAULT_EXCLUDED_APPS, type Settings } from '../../shared/settings';
 import { api, attempt, describe } from './api';
 import { DataSection } from './dataSection';
 import { HotkeyField, RadioCards } from './formParts';
 import { CAP_OPTIONS, MOTION_OPTIONS, PRESET_OPTIONS, addExcluded, parseInterval, volumePercent } from './settingsModel';
-import { SETTINGS_TEXT } from './text';
 import { useToast } from './toast';
 
 type Save = (patch: SettingsPatch, message?: string) => Promise<boolean>;
@@ -31,7 +31,7 @@ export function SettingsPage({ reloadKey, onDataChanged }: { reloadKey: number; 
   }, [load, reloadKey]);
 
   /** Sends one change, tells the user how it went, and keeps the page in step with what was actually saved. */
-  const save: Save = async (patch, message = SETTINGS_TEXT.saved) => {
+  const save: Save = async (patch, message = T.saved) => {
     const r = await attempt(api.call('settings:update', patch));
     if (r.ok) {
       setView((v) => (v ? { ...v, settings: r.value } : v));
@@ -46,7 +46,7 @@ export function SettingsPage({ reloadKey, onDataChanged }: { reloadKey: number; 
     const r = await attempt(api.call('settings:hotkey', { which, accelerator }));
     if (r.ok) {
       setView((v) => (v ? { ...v, settings: r.value } : v));
-      toast(`${name} is now ${acceleratorLabel(accelerator)}.`);
+      toast(T.shortcutNow(name, acceleratorLabel(accelerator)));
     }
     return r;
   };
@@ -58,16 +58,16 @@ export function SettingsPage({ reloadKey, onDataChanged }: { reloadKey: number; 
       return;
     }
     setView((v) => (v ? { ...v, loginItem: r.value } : v));
-    toast(on ? SETTINGS_TEXT.loginOn : SETTINGS_TEXT.loginOff);
+    toast(on ? T.loginOn : T.loginOff);
   }
 
   if (loadError !== null) {
     return (
       <div className="empty" role="alert">
-        <h1>Couldn&apos;t load your settings</h1>
+        <h1>{T.loadFailed}</h1>
         <p className="muted">{loadError}</p>
         <button type="button" className="btn btn-primary" onClick={() => void load()}>
-          Try again
+          {C.tryAgain}
         </button>
       </div>
     );
@@ -75,7 +75,7 @@ export function SettingsPage({ reloadKey, onDataChanged }: { reloadKey: number; 
   if (view === null) {
     return (
       <p className="muted" role="status">
-        Loading your settings…
+        {T.loading}
       </p>
     );
   }
@@ -84,72 +84,72 @@ export function SettingsPage({ reloadKey, onDataChanged }: { reloadKey: number; 
   return (
     <div className="settings">
       <header className="page-head">
-        <h1>Settings</h1>
+        <h1>{T.title}</h1>
       </header>
 
       <section className="card-panel settings-section" aria-labelledby="settings-study">
-        <h2 id="settings-study">Study</h2>
+        <h2 id="settings-study">{T.studySection}</h2>
         <RadioCards<Cap>
-          legend="How far Pandesal may go"
+          legend={T.capLegend}
           value={s.cap}
           options={CAP_OPTIONS}
-          note="Changes apply from your next study session."
-          onChange={(cap) => void save({ cap }, SETTINGS_TEXT.appliesNextSession)}
+          note={T.appliesNote}
+          onChange={(cap) => void save({ cap }, T.appliesNextSession)}
         />
         <RadioCards
-          legend="Personality"
+          legend={T.presetLegend}
           value={s.preset}
           options={PRESET_OPTIONS}
-          note="Changes apply from your next study session."
-          onChange={(preset) => void save({ preset }, SETTINGS_TEXT.appliesNextSession)}
+          note={T.appliesNote}
+          onChange={(preset) => void save({ preset }, T.appliesNextSession)}
         />
         <IntervalFields min={s.checkinMinMinutes} max={s.checkinMaxMinutes} save={save} />
         <ExcludedApps apps={s.excludedApps} openApps={view.openApps} save={save} />
       </section>
 
       <section className="card-panel settings-section" aria-labelledby="settings-controls">
-        <h2 id="settings-controls">Controls</h2>
+        <h2 id="settings-controls">{T.controlsSection}</h2>
         <HotkeyField
-          label="Leave it"
+          label={T.leaveItName}
           accelerator={s.leaveItHotkey}
-          hint="Pauses Pandesal from any app, and resumes him."
-          onCommit={setHotkey('leaveIt', 'Leave it')}
+          hint={T.leaveItHint}
+          onCommit={setHotkey('leaveIt', T.leaveItName)}
         />
         <HotkeyField
-          label="Answer in the bubble"
+          label={T.bubbleName}
           accelerator={s.bubbleHotkey}
-          hint="Jumps to the answer box while a question is waiting."
-          onCommit={setHotkey('bubble', 'Answer in the bubble')}
+          hint={T.bubbleHint}
+          onCommit={setHotkey('bubble', T.bubbleName)}
         />
-        <p className="hint">Esc always ends zoomies and dig-in at once. It can&apos;t be changed.</p>
+        <p className="hint">{T.escNote}</p>
       </section>
 
       <section className="card-panel settings-section" aria-labelledby="settings-sound">
-        <h2 id="settings-sound">Sound and motion</h2>
+        <h2 id="settings-sound">{T.soundSection}</h2>
         <label className="radio">
           <input type="checkbox" checked={s.soundOn} onChange={(e) => void save({ soundOn: e.target.checked })} />
-          Pandesal makes sounds
+          {T.soundOn}
         </label>
         <VolumeSlider volume={s.volume} disabled={!s.soundOn} save={save} />
-        <RadioCards legend="Reduced motion" value={s.reducedMotion} options={MOTION_OPTIONS} onChange={(reducedMotion) => void save({ reducedMotion })} />
+        <RadioCards legend={T.motionLegend} value={s.reducedMotion} options={MOTION_OPTIONS} onChange={(reducedMotion) => void save({ reducedMotion })} />
       </section>
 
       <section className="card-panel settings-section" aria-labelledby="settings-system">
-        <h2 id="settings-system">System</h2>
+        <h2 id="settings-system">{T.systemSection}</h2>
         <label className="radio">
           <input type="checkbox" checked={view.loginItem.on} disabled={!view.loginItem.available} onChange={(e) => void setLogin(e.target.checked)} />
-          Start with Windows
+          {T.startWithWindows}
         </label>
-        {!view.loginItem.available && <p className="hint">{SETTINGS_TEXT.loginUnavailable}</p>}
+        {!view.loginItem.available && <p className="hint">{T.loginUnavailable}</p>}
         <label className="radio">
           <input type="checkbox" checked={s.updateChecks} onChange={(e) => void save({ updateChecks: e.target.checked })} />
-          Check for updates
+          {T.checkUpdates}
         </label>
         <label className="radio">
           <input type="checkbox" checked={s.betaChannel} disabled={!s.updateChecks} onChange={(e) => void save({ betaChannel: e.target.checked })} />
-          Include beta versions
+          {T.betaVersions}
         </label>
-        <p className="hint">{SETTINGS_TEXT.updatesNote}</p>
+        <p className="hint">{T.updatesNote}</p>
       </section>
 
       <DataSection dataDir={view.dataDir} onDataChanged={onDataChanged} />
@@ -176,7 +176,7 @@ function IntervalFields({ min, max, save }: { min: number; max: number; save: Sa
     }
     setError(null);
     if (parsed.min === min && parsed.max === max) return;
-    if (!(await save({ checkinMinMinutes: parsed.min, checkinMaxMinutes: parsed.max }, SETTINGS_TEXT.appliesNextSession))) {
+    if (!(await save({ checkinMinMinutes: parsed.min, checkinMaxMinutes: parsed.max }, T.appliesNextSession))) {
       setLo(String(min));
       setHi(String(max));
     }
@@ -193,20 +193,20 @@ function IntervalFields({ min, max, save }: { min: number; max: number; save: Sa
         if (e.key === 'Enter') void commit();
       }}
     >
-      <legend>Pandesal usually checks in every…</legend>
+      <legend>{T.intervalLegend}</legend>
       <div className="pair">
         <label htmlFor={ids.lo} className="sr-only">
-          Shortest gap in minutes
+          {T.shortestGap}
         </label>
         <input id={ids.lo} type="text" inputMode="numeric" className="num" value={lo} aria-invalid={error ? true : undefined} onChange={(e) => setLo(e.target.value)} />
-        <span aria-hidden="true">to</span>
+        <span aria-hidden="true">{T.to}</span>
         <label htmlFor={ids.hi} className="sr-only">
-          Longest gap in minutes
+          {T.longestGap}
         </label>
         <input id={ids.hi} type="text" inputMode="numeric" className="num" value={hi} aria-invalid={error ? true : undefined} onChange={(e) => setHi(e.target.value)} />
-        <span>minutes</span>
+        <span>{T.minutes}</span>
       </div>
-      <p className="hint">This is the default for new sessions. You can still change it when you start one.</p>
+      <p className="hint">{T.intervalNote}</p>
       {error && (
         <p id={ids.err} className="field-error" role="alert">
           {error}
@@ -227,7 +227,7 @@ function VolumeSlider({ volume, disabled, save }: { volume: number; disabled: bo
   return (
     <div className="field">
       <label htmlFor={id}>
-        Volume <span className="muted">{volumePercent(value)}</span>
+        {T.volume} <span className="muted">{volumePercent(value)}</span>
       </label>
       <input
         id={id}
@@ -260,17 +260,17 @@ function ExcludedApps({ apps, openApps, save }: { apps: string[]; openApps: stri
 
   return (
     <fieldset className="field-group">
-      <legend>Apps Pandesal leaves alone</legend>
-      <p className="hint">He stays quiet while one of these is in front. Fullscreen windows, such as games, are always left alone.</p>
+      <legend>{T.excludedLegend}</legend>
+      <p className="hint">{T.excludedNote}</p>
       {apps.length === 0 ? (
-        <p className="muted">No apps listed.</p>
+        <p className="muted">{T.noApps}</p>
       ) : (
         <ul className="app-list">
           {apps.map((a) => (
             <li key={a}>
               <code>{a}</code>
-              <button type="button" className="btn btn-quiet" aria-label={`Stop leaving ${a} alone`} onClick={() => void save({ excludedApps: apps.filter((x) => x !== a) })}>
-                Remove
+              <button type="button" className="btn btn-quiet" aria-label={T.stopLeaving(a)} onClick={() => void save({ excludedApps: apps.filter((x) => x !== a) })}>
+                {T.remove}
               </button>
             </li>
           ))}
@@ -278,10 +278,10 @@ function ExcludedApps({ apps, openApps, save }: { apps: string[]; openApps: stri
       )}
       <div className="inline-form">
         <label htmlFor={ids.pick} className="sr-only">
-          Add an app that is open now
+          {T.addOpenLabel}
         </label>
         <select id={ids.pick} value="" disabled={addable.length === 0} onChange={(e) => add(e.target.value)}>
-          <option value="">{addable.length === 0 ? 'No other app is open' : 'Add an app that is open now…'}</option>
+          <option value="">{addable.length === 0 ? T.noOtherApp : T.addOpenOption}</option>
           {addable.map((a) => (
             <option key={a} value={a}>
               {a}
@@ -297,14 +297,14 @@ function ExcludedApps({ apps, openApps, save }: { apps: string[]; openApps: stri
         }}
       >
         <label htmlFor={ids.typed} className="sr-only">
-          Program name to add, such as obs64.exe
+          {T.typedLabel}
         </label>
-        <input id={ids.typed} type="text" value={typed} placeholder="Or type a program name, such as obs64.exe" autoComplete="off" onChange={(e) => setTyped(e.target.value)} />
+        <input id={ids.typed} type="text" value={typed} placeholder={T.typedPlaceholder} autoComplete="off" onChange={(e) => setTyped(e.target.value)} />
         <button type="submit" className="btn" disabled={typed.trim() === ''}>
-          Add
+          {T.add}
         </button>
         <button type="button" className="btn btn-quiet" onClick={() => void save({ excludedApps: [...DEFAULT_EXCLUDED_APPS] })}>
-          Restore the default list
+          {T.restoreDefaults}
         </button>
       </form>
     </fieldset>

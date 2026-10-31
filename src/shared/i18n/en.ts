@@ -78,3 +78,13 @@ export function say(key: string, params?: Record<string, number>): string | null
     return value === undefined ? whole : String(value);
   });
 }
+
+// The control window and tray words, one module per screen. Pandesal's own lines stay above.
+export { COMMON, plural } from './en/common';
+export { STUDY } from './en/study';
+export { DECKS } from './en/decks';
+export { HISTORY } from './en/history';
+export { SETTINGS } from './en/settings';
+export { ONBOARDING } from './en/onboarding';
+export { ABOUT } from './en/about';
+export { TRAY } from './en/tray';

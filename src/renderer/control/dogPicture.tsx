@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { COMMON as C } from '../../shared/i18n/en';
 import type { DogFrame } from '../../shared/ipc';
 import { drawDog } from '../overlay/procedural';
 
@@ -39,5 +40,5 @@ export function DogPicture({ still }: { still: boolean }) {
     return () => cancelAnimationFrame(raf);
   }, [still]);
 
-  return <canvas ref={ref} className="dog-picture" style={{ width: WIDTH, height: HEIGHT }} role="img" aria-label="Pandesal, a small dog, sitting and wagging his tail" />;
+  return <canvas ref={ref} className="dog-picture" style={{ width: WIDTH, height: HEIGHT }} role="img" aria-label={C.dogAlt} />;
 }

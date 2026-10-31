@@ -2,13 +2,13 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import type { Cap } from '../../engine/types';
 import { acceleratorLabel } from '../../shared/accelerator';
 import type { LibrarySnapshot, SettingsView } from '../../shared/control';
+import { COMMON as C, ONBOARDING as T, SETTINGS } from '../../shared/i18n/en';
 import { SAMPLE_DECK } from '../../shared/sampleDeck';
 import { api, attempt, describe } from './api';
 import { DogPicture } from './dogPicture';
 import { HotkeyField, RadioCards } from './formParts';
 import { canAdvance, initialFlow, reduce, visibleSteps } from './onboardingFlow';
 import { CAP_OPTIONS, PRESET_OPTIONS } from './settingsModel';
-import { ONBOARDING_TEXT as T, SETTINGS_TEXT } from './text';
 import { useToast } from './toast';
 
 interface Props {
@@ -33,7 +33,7 @@ export function Onboarding(props: Props) {
     return (
       <div className="onboarding">
         <div className="empty" role="alert">
-          <h1>Couldn&apos;t start setup</h1>
+          <h1>{T.loadFailed}</h1>
           <p className="muted">{error}</p>
         </div>
       </div>
@@ -43,7 +43,7 @@ export function Onboarding(props: Props) {
     return (
       <div className="onboarding">
         <p className="muted" role="status">
-          Loading…
+          {T.loading}
         </p>
       </div>
     );
@@ -100,12 +100,12 @@ function OnboardingFlow({ view, snapshot, leaveIt, presses, again, onFinished, o
       return;
     }
     setLogin(r.value.on);
-    toast(r.value.on ? SETTINGS_TEXT.loginOn : SETTINGS_TEXT.loginOff);
+    toast(r.value.on ? SETTINGS.loginOn : SETTINGS.loginOff);
   }
 
   const rebindLeaveIt = async (accelerator: string) => {
     const r = await attempt(api.call('settings:hotkey', { which: 'leaveIt', accelerator }));
-    if (r.ok) toast(`Leave it is now ${acceleratorLabel(accelerator)}.`);
+    if (r.ok) toast(T.shortcutNow(acceleratorLabel(accelerator)));
     return r;
   };
 
@@ -113,7 +113,7 @@ function OnboardingFlow({ view, snapshot, leaveIt, presses, again, onFinished, o
     <div className="onboarding">
       <main id="onboarding-main" className="onboarding-card">
         <p className="eyebrow">
-          Step {index + 1} of {steps.length}
+          {T.stepOf(index + 1, steps.length)}
         </p>
         <div className="step-dots" aria-hidden="true">
           {steps.map((s, i) => (
@@ -135,9 +135,9 @@ function OnboardingFlow({ view, snapshot, leaveIt, presses, again, onFinished, o
 
         {flow.step === 'personality' && (
           <>
-            <RadioCards<Cap> legend="How far Pandesal may go" value={flow.cap} options={CAP_OPTIONS} onChange={(cap) => dispatch({ type: 'set', patch: { cap } })} />
-            <RadioCards legend="Personality" value={flow.preset} options={PRESET_OPTIONS} onChange={(preset) => dispatch({ type: 'set', patch: { preset } })} />
-            <p className="hint">You can change both later in Settings.</p>
+            <RadioCards<Cap> legend={SETTINGS.capLegend} value={flow.cap} options={CAP_OPTIONS} onChange={(cap) => dispatch({ type: 'set', patch: { cap } })} />
+            <RadioCards legend={SETTINGS.presetLegend} value={flow.preset} options={PRESET_OPTIONS} onChange={(preset) => dispatch({ type: 'set', patch: { preset } })} />
+            <p className="hint">{T.laterNote}</p>
           </>
         )}
 
@@ -151,7 +151,7 @@ function OnboardingFlow({ view, snapshot, leaveIt, presses, again, onFinished, o
             ) : (
               <p>{T.escapeLeaveIt(acceleratorLabel(leaveIt.label))}</p>
             )}
-            {leaveIt.conflict && <HotkeyField label="Leave it shortcut" accelerator={leaveIt.label} onCommit={rebindLeaveIt} />}
+            {leaveIt.conflict && <HotkeyField label={T.shortcutField} accelerator={leaveIt.label} onCommit={rebindLeaveIt} />}
             <p role="status" className={flow.leaveItSeen ? 'practice practice-done' : 'practice'}>
               {flow.leaveItSeen ? `✓ ${T.escapeDone}` : T.escapeWaiting}
             </p>
@@ -170,9 +170,9 @@ function OnboardingFlow({ view, snapshot, leaveIt, presses, again, onFinished, o
             ))}
             <label className="radio">
               <input type="checkbox" checked={flow.updateChecks} onChange={(e) => dispatch({ type: 'set', patch: { updateChecks: e.target.checked } })} />
-              Check for updates
+              {T.checkUpdates}
             </label>
-            <p className="hint">{SETTINGS_TEXT.updatesNote}</p>
+            <p className="hint">{SETTINGS.updatesNote}</p>
           </>
         )}
 
@@ -201,12 +201,12 @@ function OnboardingFlow({ view, snapshot, leaveIt, presses, again, onFinished, o
             {error}
           </p>
         )}
-        {!canAdvance(flow) && <p className="reason">Next is off until Leave it has been pressed once, or you choose to go on without it.</p>}
+        {!canAdvance(flow) && <p className="reason">{T.nextOff}</p>}
 
         <footer className="onboarding-actions">
           {index > 0 && (
             <button type="button" className="btn" disabled={busy} onClick={() => dispatch({ type: 'back' })}>
-              Back
+              {C.back}
             </button>
           )}
           <span className="spacer" />
@@ -225,7 +225,7 @@ function OnboardingFlow({ view, snapshot, leaveIt, presses, again, onFinished, o
             </button>
           ) : (
             <button type="button" className="btn btn-primary" disabled={!canAdvance(flow)} onClick={() => dispatch({ type: 'next' })}>
-              Next
+              {C.next}
             </button>
           )}
         </footer>

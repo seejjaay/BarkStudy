@@ -1,9 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { Grade } from '../../shared/srs';
 import type { LibrarySnapshot, SessionView } from '../../shared/control';
+import { COMMON as C, STUDY as T } from '../../shared/i18n/en';
 import { api, attempt } from './api';
 import { badgeFor, parseStart, type BadgeKind } from './sessionState';
-import { formatDuration, plural, errorText } from './text';
+import { formatDuration, errorText } from './text';
 import { useToast } from './toast';
 
 type Running = Extract<SessionView, { phase: 'running' }>;
@@ -25,7 +26,7 @@ export function StudyView({
   return (
     <section aria-labelledby="study-title">
       <header className="page-head">
-        <h1 id="study-title">Study</h1>
+        <h1 id="study-title">{T.title}</h1>
       </header>
       {session.phase === 'idle' && <StartForm snapshot={snapshot} presetDeckId={presetDeckId} goDecks={goDecks} />}
       {session.phase === 'running' && <RunningPanel session={session} />}
@@ -52,12 +53,12 @@ function StartForm({ snapshot, presetDeckId, goDecks }: { snapshot: LibrarySnaps
   if (decks.length === 0) {
     return (
       <div className="empty">
-        <h2>Nothing to study yet</h2>
-        <p className="muted">Pandesal needs a deck to quiz you from. Create one or import your cards, then come back and press Start.</p>
+        <h2>{T.emptyTitle}</h2>
+        <p className="muted">{T.emptyBody}</p>
         <button type="button" className="btn btn-primary" onClick={goDecks}>
-          Go to Decks
+          {T.goDecks}
         </button>
-        <p className="reason">Start is off: create or import a deck first.</p>
+        <p className="reason">{T.startOffNoDeck}</p>
       </div>
     );
   }
@@ -72,7 +73,7 @@ function StartForm({ snapshot, presetDeckId, goDecks }: { snapshot: LibrarySnaps
       setError(errorText(r.error));
       return;
     }
-    toast(`Session started. Pandesal will check in every ${parsed.request.checkinMinMinutes}–${parsed.request.checkinMaxMinutes} minutes.`);
+    toast(T.started(parsed.request.checkinMinMinutes, parsed.request.checkinMaxMinutes));
   }
 
   return (
@@ -83,39 +84,39 @@ function StartForm({ snapshot, presetDeckId, goDecks }: { snapshot: LibrarySnaps
         void start();
       }}
     >
-      <h2>Start a session</h2>
+      <h2>{T.startTitle}</h2>
       <div className="field">
-        <label htmlFor={ids.deck}>Deck</label>
+        <label htmlFor={ids.deck}>{T.deck}</label>
         <select id={ids.deck} value={draft.deckId} onChange={(e) => setDraft({ ...draft, deckId: e.target.value })}>
           <option value="" disabled>
-            Choose a deck…
+            {T.chooseDeck}
           </option>
           {decks.map((d) => (
             <option key={d.id} value={d.id}>
-              {d.name} ({plural(d.cardCount, 'card')})
+              {d.name} ({C.cards(d.cardCount)})
             </option>
           ))}
         </select>
       </div>
       <div className="field">
         <label htmlFor={ids.topic}>
-          Topic <span className="muted">(optional, shown in your history)</span>
+          {T.topic} <span className="muted">{T.topicNote}</span>
         </label>
         <input id={ids.topic} type="text" value={draft.topic} maxLength={80} autoComplete="off" onChange={(e) => setDraft({ ...draft, topic: e.target.value })} />
       </div>
       <fieldset className="field-group">
-        <legend>Pandesal checks in every…</legend>
+        <legend>{T.checkinEvery}</legend>
         <div className="pair">
           <label htmlFor={ids.min} className="sr-only">
-            Shortest gap in minutes
+            {T.shortestGap}
           </label>
           <input id={ids.min} type="text" inputMode="numeric" className="num" value={draft.min} onChange={(e) => setDraft({ ...draft, min: e.target.value })} />
-          <span aria-hidden="true">to</span>
+          <span aria-hidden="true">{T.to}</span>
           <label htmlFor={ids.max} className="sr-only">
-            Longest gap in minutes
+            {T.longestGap}
           </label>
           <input id={ids.max} type="text" inputMode="numeric" className="num" value={draft.max} onChange={(e) => setDraft({ ...draft, max: e.target.value })} />
-          <span>minutes</span>
+          <span>{T.minutes}</span>
         </div>
       </fieldset>
       {error && (
@@ -125,11 +126,11 @@ function StartForm({ snapshot, presetDeckId, goDecks }: { snapshot: LibrarySnaps
       )}
       <div className="actions">
         <button type="submit" className="btn btn-primary" disabled={!parsed.ok || busy} aria-describedby={parsed.ok ? undefined : ids.why}>
-          {busy ? 'Starting…' : 'Start session'}
+          {busy ? T.starting : T.startSession}
         </button>
         {!parsed.ok && (
           <span id={ids.why} className="reason">
-            Start is off: {parsed.reason}
+            {T.startOffBecause(parsed.reason)}
           </span>
         )}
       </div>
@@ -151,7 +152,7 @@ function RunningPanel({ session }: { session: Running }) {
   async function answer(grade: Grade): Promise<void> {
     const r = await attempt(api.call('session:answer', { grade }));
     if (!r.ok) toast(errorText(r.error), { kind: 'error' });
-    else toast(grade === 'again' ? 'Marked as missed. Pandesal will bring it back.' : 'Nice. Pandesal got a treat.');
+    else toast(grade === 'again' ? T.missed : T.gotIt);
   }
 
   async function control(action: Parameters<typeof api.call<'session:control'>>[1], done: string): Promise<void> {
@@ -163,8 +164,8 @@ function RunningPanel({ session }: { session: Running }) {
   async function end(): Promise<void> {
     const r = await attempt(api.call('session:end', undefined));
     if (!r.ok) toast(errorText(r.error), { kind: 'error' });
-    else if (r.value.phase === 'ended' && !r.value.saved) toast('The session ended, but it could not be saved to your history.', { kind: 'error' });
-    else toast('Session saved to your history.');
+    else if (r.value.phase === 'ended' && !r.value.saved) toast(T.sessionNotSaved, { kind: 'error' });
+    else toast(T.sessionSaved);
   }
 
   return (
@@ -182,11 +183,11 @@ function RunningPanel({ session }: { session: Running }) {
         <p className="muted">{badge.detail}</p>
         <dl className="counters">
           <div>
-            <dt>Answered</dt>
+            <dt>{C.answered}</dt>
             <dd>{session.answered}</dd>
           </div>
           <div>
-            <dt>Treats</dt>
+            <dt>{C.treats}</dt>
             <dd>{session.treats}</dd>
           </div>
         </dl>
@@ -194,67 +195,67 @@ function RunningPanel({ session }: { session: Running }) {
 
       {session.saveProblem && (
         <div className="banner banner-warn" role="alert">
-          <strong>A review could not be saved.</strong> The session carries on, but check your disk and your saved data.
+          <strong>{T.saveProblemLead}</strong> {T.saveProblemBody}
         </div>
       )}
 
       <div className="card-panel" aria-live="polite">
         {session.card ? (
           <>
-            <p className="eyebrow">Pandesal asks</p>
+            <p className="eyebrow">{T.asks}</p>
             <p className="question">{session.card.front}</p>
             {showing ? (
               <>
-                <p className="eyebrow">Answer</p>
+                <p className="eyebrow">{T.answerLabel}</p>
                 <p className="answer">{session.card.back}</p>
                 <div className="actions">
                   <button type="button" className="btn btn-primary" ref={goodButton} onClick={() => void answer('good')}>
-                    Got it
+                    {T.gotItButton}
                   </button>
                   <button type="button" className="btn" onClick={() => void answer('again')}>
-                    Missed it
+                    {T.missedButton}
                   </button>
                 </div>
               </>
             ) : (
               <div className="actions">
                 <button type="button" className="btn btn-primary" onClick={() => setRevealed(session.card?.id ?? null)}>
-                  Show answer
+                  {T.showAnswer}
                 </button>
               </div>
             )}
           </>
         ) : (
-          <p className="muted">No question right now. Pandesal will check in on his own.</p>
+          <p className="muted">{T.noQuestion}</p>
         )}
       </div>
 
       <div className="card-panel">
-        <h3>Controls</h3>
+        <h3>{T.controls}</h3>
         <div className="actions wrap">
           {session.paused ? (
-            <button type="button" className="btn btn-primary" onClick={() => void control({ action: 'resume' }, 'Resumed.')}>
-              Resume
+            <button type="button" className="btn btn-primary" onClick={() => void control({ action: 'resume' }, T.resumed)}>
+              {T.resume}
             </button>
           ) : (
-            <button type="button" className="btn" onClick={() => void control({ action: 'pause' }, 'Paused. Pandesal is on Leave it.')}>
-              Leave it (pause)
+            <button type="button" className="btn" onClick={() => void control({ action: 'pause' }, T.paused)}>
+              {T.leaveIt}
             </button>
           )}
           {session.stay ? (
-            <button type="button" className="btn" onClick={() => void control({ action: 'stay-off' }, 'Stay ended.')}>
-              End stay
+            <button type="button" className="btn" onClick={() => void control({ action: 'stay-off' }, T.stayEnded)}>
+              {T.endStay}
             </button>
           ) : (
             ([15, 25, 50] as const).map((m) => (
-              <button key={m} type="button" className="btn" onClick={() => void control({ action: 'stay-on', minutes: m }, `Pandesal will stay quietly for ${m} minutes.`)}>
-                Stay {m} min
+              <button key={m} type="button" className="btn" onClick={() => void control({ action: 'stay-on', minutes: m }, T.stayStarted(m))}>
+                {T.stay(m)}
               </button>
             ))
           )}
           <span className="spacer" />
           <button type="button" className="btn btn-danger" onClick={() => void end()}>
-            End session
+            {T.endSession}
           </button>
         </div>
       </div>
@@ -269,7 +270,7 @@ function Summary({ session }: { session: Ended }) {
   return (
     <div className="card-panel">
       <h2 tabIndex={-1} ref={heading}>
-        Session finished
+        {T.finished}
       </h2>
       <p className="muted">
         {session.deckName}
@@ -277,30 +278,30 @@ function Summary({ session }: { session: Ended }) {
       </p>
       {!session.saved && (
         <div className="banner banner-warn" role="alert">
-          <strong>Not saved.</strong> This session could not be written to your history.
+          <strong>{T.notSavedLead}</strong> {T.notSavedBody}
         </div>
       )}
       <dl className="counters">
         <div>
-          <dt>Answered</dt>
+          <dt>{C.answered}</dt>
           <dd>{session.answered}</dd>
         </div>
         <div>
-          <dt>Treats</dt>
+          <dt>{C.treats}</dt>
           <dd>{session.treats}</dd>
         </div>
         <div>
-          <dt>Longest wait</dt>
+          <dt>{C.longestWait}</dt>
           <dd>{session.answered === 0 ? '—' : formatDuration(session.longestWaitMs)}</dd>
         </div>
         <div>
-          <dt>Guilt trips</dt>
+          <dt>{C.guiltTrips}</dt>
           <dd>{session.guiltTrips}</dd>
         </div>
       </dl>
       <div className="actions">
         <button type="button" className="btn btn-primary" onClick={dismiss}>
-          Start another
+          {T.startAnother}
         </button>
       </div>
     </div>

@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { COMMON as C, SETTINGS } from '../../shared/i18n/en';
 import { api, attempt, describe } from './api';
 import { Modal } from './modal';
-import { SETTINGS_TEXT } from './text';
 import { useToast } from './toast';
+
+const T = SETTINGS.data;
 
 type Confirming = 'import' | 'reset' | null;
 
@@ -22,7 +24,7 @@ export function DataSection({ dataDir, onDataChanged }: { dataDir: string; onDat
     const r = await attempt(api.call('data:export-all', undefined));
     setBusy(false);
     if (!r.ok) toast(describe(r.error), { kind: 'error' });
-    else if (r.value) toast(SETTINGS_TEXT.exportDone(r.value.path));
+    else if (r.value) toast(T.exportDone(r.value.path));
   }
 
   async function importAll(): Promise<void> {
@@ -32,7 +34,7 @@ export function DataSection({ dataDir, onDataChanged }: { dataDir: string; onDat
     setBusy(false);
     if (!r.ok) toast(describe(r.error), { kind: 'error' });
     else if (r.value) {
-      toast(SETTINGS_TEXT.importDone);
+      toast(T.importDone);
       onDataChanged();
     }
   }
@@ -44,57 +46,57 @@ export function DataSection({ dataDir, onDataChanged }: { dataDir: string; onDat
     setBusy(false);
     if (!r.ok) toast(describe(r.error), { kind: 'error' });
     else {
-      toast(SETTINGS_TEXT.resetDone);
+      toast(T.resetDone);
       onDataChanged();
     }
   }
 
   return (
     <section className="card-panel settings-section" aria-labelledby="settings-data">
-      <h2 id="settings-data">Your data</h2>
+      <h2 id="settings-data">{T.title}</h2>
       <p className="hint">
-        Everything is stored on this PC, in <code>{dataDir}</code>. Nothing is sent anywhere.
+        {T.storedBefore}<code>{dataDir}</code>{T.storedAfter}
       </p>
       <div className="actions">
         <button type="button" className="btn" onClick={() => void openFolder()}>
-          Open data folder
+          {T.openFolder}
         </button>
         <button type="button" className="btn" disabled={busy} onClick={() => void exportAll()}>
-          Export all…
+          {T.exportAll}
         </button>
         <button type="button" className="btn" disabled={busy} onClick={() => setConfirming('import')}>
-          Import all…
+          {T.importAll}
         </button>
         <button type="button" className="btn btn-danger" disabled={busy} onClick={() => setConfirming('reset')}>
-          Reset everything…
+          {T.resetAll}
         </button>
       </div>
-      <p className="hint">Export all saves one backup file with your decks, history and settings. Import all restores it. A running session blocks import and reset.</p>
+      <p className="hint">{T.note}</p>
 
       {confirming === 'import' && (
-        <Modal title={SETTINGS_TEXT.importTitle} onClose={() => setConfirming(null)}>
-          <p>{SETTINGS_TEXT.importBody}</p>
+        <Modal title={T.importTitle} onClose={() => setConfirming(null)}>
+          <p>{T.importBody}</p>
           <div className="dialog-actions">
             <span className="spacer" />
             <button type="button" className="btn btn-quiet" data-autofocus onClick={() => setConfirming(null)}>
-              Cancel
+              {C.cancel}
             </button>
             <button type="button" className="btn btn-primary" onClick={() => void importAll()}>
-              Choose backup file…
+              {T.chooseBackup}
             </button>
           </div>
         </Modal>
       )}
       {confirming === 'reset' && (
-        <Modal title={SETTINGS_TEXT.resetTitle} onClose={() => setConfirming(null)}>
-          <p>{SETTINGS_TEXT.resetBody}</p>
+        <Modal title={T.resetTitle} onClose={() => setConfirming(null)}>
+          <p>{T.resetBody}</p>
           <div className="dialog-actions">
             <span className="spacer" />
             <button type="button" className="btn btn-quiet" data-autofocus onClick={() => setConfirming(null)}>
-              Cancel
+              {C.cancel}
             </button>
             <button type="button" className="btn btn-danger" onClick={() => void reset()}>
-              Reset everything
+              {T.reset}
             </button>
           </div>
         </Modal>

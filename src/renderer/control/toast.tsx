@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
+import { COMMON as C } from '../../shared/i18n/en';
 
 export interface ToastOptions {
   kind?: 'ok' | 'error';
@@ -59,7 +60,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 {t.action.label}
               </button>
             )}
-            <button type="button" className="btn btn-quiet toast-close" aria-label="Dismiss message" onClick={() => dismiss(t.id)}>
+            <button type="button" className="btn btn-quiet toast-close" aria-label={C.dismissMessage} onClick={() => dismiss(t.id)}>
               ×
             </button>
           </div>

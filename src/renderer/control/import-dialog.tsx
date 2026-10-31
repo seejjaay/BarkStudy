@@ -1,34 +1,36 @@
 import { useId, useState } from 'react';
 import type { AppError, DeckSummary, ImportReport, Result } from '../../shared/control';
+import { COMMON as C, DECKS } from '../../shared/i18n/en';
 import { api, attempt } from './api';
 import { Modal } from './modal';
-import { SKIP_TEXT, deckLabel, errorText, plural } from './text';
+import { deckLabel, errorText } from './text';
 import type { SkippedRow } from '../../shared/deckParse';
 
+const T = DECKS.importDialog;
 const SHOW_SKIPPED = 100;
 
 function SkippedList({ rows }: { rows: readonly SkippedRow[] }) {
   if (rows.length === 0) return null;
   return (
     <div className="skipped">
-      <p className="muted">{plural(rows.length, 'row')} could not be used:</p>
+      <p className="muted">{T.skippedCount(C.rows(rows.length))}</p>
       <table>
         <thead>
           <tr>
-            <th scope="col">Line</th>
-            <th scope="col">Why it was left out</th>
+            <th scope="col">{T.line}</th>
+            <th scope="col">{T.whyLeftOut}</th>
           </tr>
         </thead>
         <tbody>
           {rows.slice(0, SHOW_SKIPPED).map((r) => (
             <tr key={`${r.line}-${r.reason}`}>
               <td>{r.line}</td>
-              <td>{SKIP_TEXT[r.reason]}</td>
+              <td>{C.skipped[r.reason]}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      {rows.length > SHOW_SKIPPED && <p className="muted">…and {rows.length - SHOW_SKIPPED} more.</p>}
+      {rows.length > SHOW_SKIPPED && <p className="muted">{T.andMore(rows.length - SHOW_SKIPPED)}</p>}
     </div>
   );
 }
@@ -65,7 +67,7 @@ export function ImportDialog({
     if (result.value === null) return; // cancelled in the file dialog
     setError(null);
     const r = result.value;
-    const deckName = decks.find((d) => d.id === r.deckId)?.name ?? (name.trim() || 'your new deck');
+    const deckName = decks.find((d) => d.id === r.deckId)?.name ?? (name.trim() || T.yourNewDeck);
     onImported(r, deckName);
     if (r.skipped.length === 0 && r.duplicates === 0) onClose();
     else setReport({ report: r, deckName });
@@ -86,15 +88,16 @@ export function ImportDialog({
   if (report) {
     const r = report.report;
     return (
-      <Modal title="Import finished" onClose={onClose}>
+      <Modal title={T.finishedTitle} onClose={onClose}>
         <p>
-          Added <strong>{plural(r.added, 'card')}</strong> to {report.deckName}.
-          {r.duplicates > 0 && ` ${plural(r.duplicates, 'row')} matched cards already in the deck, so they were not added again.`}
+          {T.addedBefore}<strong>{C.cards(r.added)}</strong>
+          {T.addedAfter(report.deckName)}
+          {r.duplicates > 0 && T.duplicates(C.rows(r.duplicates))}
         </p>
         <SkippedList rows={r.skipped} />
         <div className="dialog-actions">
           <button type="button" className="btn btn-primary" data-autofocus onClick={onClose}>
-            Done
+            {C.done}
           </button>
         </div>
       </Modal>
@@ -102,27 +105,27 @@ export function ImportDialog({
   }
 
   return (
-    <Modal title="Import cards" onClose={onClose}>
+    <Modal title={T.title} onClose={onClose}>
       <fieldset className="field-group">
-        <legend>Add the cards to</legend>
+        <legend>{T.addTo}</legend>
         <label className="radio">
-          <input type="radio" name="target" checked={target === 'new'} onChange={() => setTarget('new')} /> A new deck
+          <input type="radio" name="target" checked={target === 'new'} onChange={() => setTarget('new')} /> {T.newDeckOption}
         </label>
         <label className="radio">
-          <input type="radio" name="target" checked={target === 'existing'} disabled={decks.length === 0} onChange={() => setTarget('existing')} /> An existing deck
-          {decks.length === 0 && <span className="muted"> (you have none yet)</span>}
+          <input type="radio" name="target" checked={target === 'existing'} disabled={decks.length === 0} onChange={() => setTarget('existing')} /> {T.existingDeckOption}
+          {decks.length === 0 && <span className="muted">{T.noneYet}</span>}
         </label>
       </fieldset>
 
       {target === 'new' ? (
         <div className="field">
-          <label htmlFor={ids.name}>Deck name</label>
+          <label htmlFor={ids.name}>{DECKS.deckName}</label>
           <input id={ids.name} type="text" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} data-autofocus autoComplete="off" />
-          <p className="hint">A file you choose uses its own file name instead.</p>
+          <p className="hint">{T.fileNameNote}</p>
         </div>
       ) : (
         <div className="field">
-          <label htmlFor={ids.deck}>Deck</label>
+          <label htmlFor={ids.deck}>{T.deck}</label>
           <select id={ids.deck} value={deckId} onChange={(e) => setDeckId(e.target.value)} data-autofocus>
             {decks.map((d) => (
               <option key={d.id} value={d.id}>
@@ -134,7 +137,7 @@ export function ImportDialog({
       )}
 
       <div className="field">
-        <label htmlFor={ids.text}>Paste cards</label>
+        <label htmlFor={ids.text}>{T.pasteLabel}</label>
         <textarea
           id={ids.text}
           rows={7}
@@ -142,9 +145,9 @@ export function ImportDialog({
           onChange={(e) => setText(e.target.value)}
           aria-describedby={error ? ids.err : undefined}
           spellCheck={false}
-          placeholder={'One card per line: front, then back.\nbonjour,hello\nmerci\tthank you'}
+          placeholder={T.pastePlaceholder}
         />
-        <p className="hint">Works with CSV, tab-separated text from Quizlet or Anki, and rows copied from a spreadsheet.</p>
+        <p className="hint">{T.pasteNote}</p>
       </div>
 
       {error && (
@@ -157,14 +160,14 @@ export function ImportDialog({
 
       <div className="dialog-actions">
         <button type="button" className="btn" disabled={busy} onClick={() => void importFile()}>
-          Choose a file…
+          {T.chooseFile}
         </button>
         <span className="spacer" />
         <button type="button" className="btn btn-quiet" onClick={onClose}>
-          Cancel
+          {C.cancel}
         </button>
         <button type="button" className="btn btn-primary" disabled={busy || text.trim() === '' || (target === 'existing' && deckId === '')} onClick={() => void importText()}>
-          {busy ? 'Importing…' : 'Import pasted text'}
+          {busy ? T.importing : T.importPasted}
         </button>
       </div>
     </Modal>

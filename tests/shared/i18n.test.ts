@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { ALL_LINE_KEYS, GUILT_LINES, LAST_GUILT_LINES } from '../../src/engine/lines';
 import { EN, say } from '../../src/shared/i18n/en';
@@ -39,4 +42,38 @@ describe('en', () => {
     expect(say('toString')).toBeNull();
     expect(say('__proto__')).toBeNull();
   });
+});
+
+// The control window and the tray take every word from src/shared/i18n/en/. This reads their source for English that slipped back in.
+describe('no English outside i18n', () => {
+  const root = fileURLToPath(new URL('../../', import.meta.url));
+  const files = [
+    ...readdirSync(join(root, 'src/renderer/control'), { recursive: true, encoding: 'utf8' })
+      .filter((f) => f.endsWith('.tsx'))
+      .map((f) => join('src/renderer/control', f)),
+    'src/main/trayModel.ts',
+  ];
+
+  // Comments hold words by design; template substitutions are code, not text.
+  const strip = (src: string): string =>
+    src
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1')
+      .replace(/\$\{[^}]*\}/g, '');
+
+  // Text straight after a tag (arrows, comparisons and generic brackets excluded), and text straight after a {expression} on the same line.
+  const JSX_TEXT = /(?<![=\s-])>\s*[A-Za-z][^<{>]*<|\}[ \t]*[A-Za-z][A-Za-z ,.'’!?:&;-]*</g;
+  const ATTR_WORDS = /\b(?:label:|title=|aria-label=|placeholder=|hint=)\s*\{?\s*(['"`])[^'"`\n]*[A-Za-z][^'"`\n]*\1/g;
+
+  it('finds the control window and tray files', () => {
+    expect(files.length).toBeGreaterThan(10);
+  });
+
+  for (const file of files) {
+    it(`${file} has no hard-coded text`, () => {
+      const src = strip(readFileSync(join(root, file), 'utf8'));
+      const found = [...(src.match(JSX_TEXT) ?? []), ...(src.match(ATTR_WORDS) ?? [])].map((m) => m.replace(/\s+/g, ' ').trim());
+      expect(found).toEqual([]);
+    });
+  }
 });

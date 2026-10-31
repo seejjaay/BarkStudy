@@ -1,10 +1,11 @@
 import { useId, useRef, useState, type FormEvent } from 'react';
 import type { DeckSummary, LibrarySnapshot } from '../../shared/control';
+import { COMMON as C, DECKS as T } from '../../shared/i18n/en';
 import { api, attempt } from './api';
 import { CardsView } from './cards';
 import { ImportDialog } from './import-dialog';
 import { useToast } from './toast';
-import { errorText, importMessage, plural } from './text';
+import { errorText, importMessage } from './text';
 
 export function DecksView({
   snapshot,
@@ -41,7 +42,7 @@ export function DecksView({
     setCreating(false);
     setNewName('');
     setCreateError(null);
-    toast(`Created the deck “${r.value.name}”.`);
+    toast(T.created(r.value.name));
     await refresh();
     newButton.current?.focus();
   }
@@ -56,7 +57,7 @@ export function DecksView({
     }
     setRenaming(null);
     setRenameError(null);
-    toast(`Renamed to “${r.value.name}”.`);
+    toast(T.renamed(r.value.name));
     await refresh();
   }
 
@@ -68,13 +69,13 @@ export function DecksView({
     }
     await refresh();
     const token = r.value;
-    toast(`Deleted “${deck.name}” (${plural(deck.cardCount, 'card')}).`, {
+    toast(T.deleted(deck.name, C.cards(deck.cardCount)), {
       action: {
-        label: 'Undo',
+        label: C.undo,
         run: () => {
           void (async () => {
             const back = await attempt(api.call('deck:restore', token));
-            if (back.ok) toast(`Restored “${deck.name}”.`);
+            if (back.ok) toast(T.restored(deck.name));
             else toast(errorText(back.error), { kind: 'error' });
             await refresh();
           })();
@@ -86,7 +87,7 @@ export function DecksView({
   async function exportDeck(deck: DeckSummary): Promise<void> {
     const r = await attempt(api.call('deck:export', { id: deck.id }));
     if (!r.ok) toast(errorText(r.error), { kind: 'error' });
-    else if (r.value) toast(`Exported “${deck.name}” to ${r.value.path}.`);
+    else if (r.value) toast(T.exported(deck.name, r.value.path));
   }
 
   const dialog = importing && (
@@ -120,10 +121,10 @@ export function DecksView({
   return (
     <section aria-labelledby="decks-title">
       <header className="page-head">
-        <h1 id="decks-title">Decks</h1>
+        <h1 id="decks-title">{T.title}</h1>
         <div className="actions">
           <button type="button" className="btn" onClick={() => setImporting({ deckId: null })}>
-            Import cards…
+            {T.importCards}
           </button>
           <button
             type="button"
@@ -134,14 +135,14 @@ export function DecksView({
               setCreateError(null);
             }}
           >
-            New deck
+            {T.newDeck}
           </button>
         </div>
       </header>
 
       {creating && (
         <form className="inline-form" onSubmit={(e) => void create(e)}>
-          <label htmlFor={createId}>Deck name</label>
+          <label htmlFor={createId}>{T.deckName}</label>
           <input
             id={createId}
             type="text"
@@ -155,10 +156,10 @@ export function DecksView({
             onKeyDown={(e) => e.key === 'Escape' && setCreating(false)}
           />
           <button type="submit" className="btn btn-primary" disabled={newName.trim() === ''}>
-            Create
+            {T.create}
           </button>
           <button type="button" className="btn btn-quiet" onClick={() => setCreating(false)}>
-            Cancel
+            {C.cancel}
           </button>
           {createError && (
             <p id={`${createId}-err`} className="field-error" role="alert">
@@ -170,14 +171,14 @@ export function DecksView({
 
       {decks.length === 0 && !creating ? (
         <div className="empty">
-          <h2>No decks yet</h2>
-          <p className="muted">A deck is a set of flashcards. Start an empty one, or bring in cards from a spreadsheet, Quizlet or Anki.</p>
+          <h2>{T.emptyTitle}</h2>
+          <p className="muted">{T.emptyBody}</p>
           <div className="actions">
             <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}>
-              New deck
+              {T.newDeck}
             </button>
             <button type="button" className="btn" onClick={() => setImporting({ deckId: null })}>
-              Import cards…
+              {T.importCards}
             </button>
           </div>
         </div>
@@ -190,7 +191,7 @@ export function DecksView({
                 {renaming?.id === d.id ? (
                   <form className="inline-form grow" onSubmit={(e) => void rename(e)}>
                     <label htmlFor={renameId} className="sr-only">
-                      New name for {d.name}
+                      {T.newNameFor(d.name)}
                     </label>
                     <input
                       id={renameId}
@@ -204,10 +205,10 @@ export function DecksView({
                       onKeyDown={(e) => e.key === 'Escape' && setRenaming(null)}
                     />
                     <button type="submit" className="btn btn-primary" disabled={renaming.name.trim() === '' || renaming.name.trim() === d.name}>
-                      Save
+                      {C.save}
                     </button>
                     <button type="button" className="btn btn-quiet" onClick={() => setRenaming(null)}>
-                      Cancel
+                      {C.cancel}
                     </button>
                     {renameError && (
                       <p className="field-error" role="alert">
@@ -219,38 +220,38 @@ export function DecksView({
                   <div className="grow">
                     <div className="row-title">{d.name}</div>
                     <div className="muted">
-                      {plural(d.cardCount, 'card')}
-                      {inUse && ' · in use by the running session'}
+                      {C.cards(d.cardCount)}
+                      {inUse && T.inUseNote}
                     </div>
                   </div>
                 )}
                 <div className="actions">
                   <button type="button" className="btn btn-quiet" onClick={() => setOpenDeckId(d.id)}>
-                    Cards
+                    {T.openCards}
                   </button>
-                  <button type="button" className="btn btn-quiet" disabled={d.cardCount === 0} title={d.cardCount === 0 ? 'Add cards first' : undefined} onClick={() => study(d.id)}>
-                    Study
+                  <button type="button" className="btn btn-quiet" disabled={d.cardCount === 0} title={d.cardCount === 0 ? T.addCardsFirst : undefined} onClick={() => study(d.id)}>
+                    {T.study}
                   </button>
                   <button type="button" className="btn btn-quiet" onClick={() => setImporting({ deckId: d.id })}>
-                    Import
+                    {T.import}
                   </button>
                   <button type="button" className="btn btn-quiet" disabled={d.cardCount === 0} onClick={() => void exportDeck(d)}>
-                    Export
+                    {T.export}
                   </button>
                   <button
                     type="button"
                     className="btn btn-quiet"
                     disabled={inUse}
-                    title={inUse ? 'End the session first' : undefined}
+                    title={inUse ? T.endSessionFirst : undefined}
                     onClick={() => {
                       setRenaming({ id: d.id, name: d.name });
                       setRenameError(null);
                     }}
                   >
-                    Rename
+                    {T.rename}
                   </button>
-                  <button type="button" className="btn btn-quiet btn-danger" disabled={inUse} title={inUse ? 'End the session first' : undefined} onClick={() => void remove(d)}>
-                    Delete
+                  <button type="button" className="btn btn-quiet btn-danger" disabled={inUse} title={inUse ? T.endSessionFirst : undefined} onClick={() => void remove(d)}>
+                    {T.delete}
                   </button>
                 </div>
               </li>

@@ -1,4 +1,5 @@
 import type { DeckSummary, Result, SessionAction, SessionView, StartRequest } from '../shared/control';
+import { TRAY } from '../shared/i18n/en';
 import { sessionKind } from '../shared/sessionKind';
 import type { Library } from './library';
 import type { SessionController } from './session';
@@ -12,9 +13,9 @@ export const MAX_TRAY_DECKS = 12;
 
 /** The volumes the tray offers, quietest first. */
 export const TRAY_VOLUMES = [
-  { label: 'Low', level: 0.4 },
-  { label: 'Medium', level: 0.65 },
-  { label: 'High', level: 0.9 },
+  { label: TRAY.volumeLow, level: 0.4 },
+  { label: TRAY.volumeMedium, level: 0.65 },
+  { label: TRAY.volumeHigh, level: 0.9 },
 ] as const;
 
 export interface MenuItemSpec {
@@ -60,55 +61,55 @@ const minutesLeft = (ms: number) => Math.max(1, Math.ceil(ms / 60_000));
 
 /** One line saying what Pandesal is doing, shared by the menu header and the tooltip. */
 export function statusLine(view: SessionView): string {
-  if (view.phase === 'idle') return 'No session running';
-  if (view.phase === 'ended') return `Session finished: ${view.answered} answered, ${view.treats} treats`;
+  if (view.phase === 'idle') return TRAY.idle;
+  if (view.phase === 'ended') return TRAY.ended(view.answered, view.treats);
   switch (sessionKind(view)) {
     case 'paused':
-      return `Studying ${view.deckName}: paused (Leave it)`;
+      return TRAY.paused(view.deckName);
     case 'stay':
-      return `Studying ${view.deckName}: staying${view.stayLeftMs === null ? '' : `, about ${minutesLeft(view.stayLeftMs)} min left`}`;
+      return TRAY.stay(view.deckName, view.stayLeftMs === null ? null : minutesLeft(view.stayLeftMs));
     case 'away':
-      return `Studying ${view.deckName}: you are away`;
+      return TRAY.away(view.deckName);
     case 'quiet':
-      return `Studying ${view.deckName}: quiet while another app is in front`;
+      return TRAY.quiet(view.deckName);
     case 'running':
-      return `Studying ${view.deckName}`;
+      return TRAY.running(view.deckName);
   }
 }
 
-export const trayTooltip = (view: SessionView): string => `BarkStudy\n${statusLine(view)}`;
+export const trayTooltip = (view: SessionView): string => TRAY.tooltip(statusLine(view));
 
 export function buildTrayMenu(inputs: TrayInputs): MenuItemSpec[] {
   const { view, decks, leaveItLabel } = inputs;
   const items: MenuItemSpec[] = [{ label: statusLine(view), enabled: false }];
 
-  if (inputs.trackerDown) items.push({ label: 'Window tracking is off. Pandesal roams the screen edges.', enabled: false });
-  if (inputs.leaveItConflict) items.push({ label: `${leaveItLabel} is used by another app, so Leave it works from this menu only.`, enabled: false });
+  if (inputs.trackerDown) items.push({ label: TRAY.trackerDown, enabled: false });
+  if (inputs.leaveItConflict) items.push({ label: TRAY.shortcutTaken(leaveItLabel), enabled: false });
   items.push(sep);
 
   if (view.phase === 'running') {
     items.push(
       view.paused
-        ? { id: 'resume', label: 'Resume', hint: leaveItLabel }
-        : { id: 'pause', label: 'Leave it (pause)', hint: leaveItLabel },
+        ? { id: 'resume', label: TRAY.resume, hint: leaveItLabel }
+        : { id: 'pause', label: TRAY.pause, hint: leaveItLabel },
     );
     items.push(
       view.stay
-        ? { id: 'stay-off', label: 'End stay' }
+        ? { id: 'stay-off', label: TRAY.endStay }
         : {
-            label: 'Stay (focus block)',
-            submenu: ([15, 25, 50] as const).map((m) => ({ id: `stay-on:${m}`, label: `Stay ${m} minutes` })),
+            label: TRAY.stayMenu,
+            submenu: ([15, 25, 50] as const).map((m) => ({ id: `stay-on:${m}`, label: TRAY.stayFor(m) })),
           },
     );
-    items.push({ id: 'end', label: 'End session' });
+    items.push({ id: 'end', label: TRAY.endSession });
   } else {
     const usable = decks.filter((d) => d.cardCount > 0);
     items.push(
       usable.length === 0
-        ? { label: 'Start session (add a deck with cards first)', enabled: false }
+        ? { label: TRAY.startNoDecks, enabled: false }
         : {
-            label: 'Start session',
-            submenu: usable.slice(0, MAX_TRAY_DECKS).map((d) => ({ id: `start:${d.id}`, label: `${d.name} (${d.cardCount} ${d.cardCount === 1 ? 'card' : 'cards'})` })),
+            label: TRAY.startMenu,
+            submenu: usable.slice(0, MAX_TRAY_DECKS).map((d) => ({ id: `start:${d.id}`, label: TRAY.deckItem(d.name, d.cardCount) })),
           },
     );
   }
@@ -116,11 +117,11 @@ export function buildTrayMenu(inputs: TrayInputs): MenuItemSpec[] {
   // The Sounds item's id says what a click does: it turns sound off while it is on, and on while it is off.
   items.push(
     sep,
-    { id: inputs.soundOn ? 'sound:off' : 'sound:on', label: 'Sounds', kind: 'checkbox', checked: inputs.soundOn },
-    { label: 'Volume', submenu: TRAY_VOLUMES.map((v) => ({ id: `volume:${v.level}`, label: v.label, kind: 'radio', checked: inputs.volume === v.level })) },
+    { id: inputs.soundOn ? 'sound:off' : 'sound:on', label: TRAY.sounds, kind: 'checkbox', checked: inputs.soundOn },
+    { label: TRAY.volume, submenu: TRAY_VOLUMES.map((v) => ({ id: `volume:${v.level}`, label: v.label, kind: 'radio', checked: inputs.volume === v.level })) },
   );
 
-  items.push(sep, { id: 'open', label: 'Open BarkStudy' }, { id: 'quit', label: 'Quit BarkStudy' });
+  items.push(sep, { id: 'open', label: TRAY.open }, { id: 'quit', label: TRAY.quit });
   return items;
 }
 
@@ -155,16 +156,9 @@ export interface TrayActionDeps {
   notify: (message: string) => void;
 }
 
-const WHY_NOT: Record<string, string> = {
-  'empty-deck': 'That deck has no cards yet.',
-  'not-found': 'That deck is gone.',
-  'already-running': 'A session is already running.',
-  'not-running': 'No session is running.',
-};
-
 export async function runTrayAction(action: TrayAction, deps: TrayActionDeps): Promise<void> {
   const report = (r: Result<unknown>): void => {
-    if (!r.ok) deps.notify(WHY_NOT[r.error.code] ?? 'That did not work. Open BarkStudy for details.');
+    if (!r.ok) deps.notify(TRAY.whyNot[r.error.code] ?? TRAY.failed);
   };
   switch (action.kind) {
     case 'open':

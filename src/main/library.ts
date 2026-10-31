@@ -12,7 +12,7 @@ import {
 } from '../shared/control';
 import { exportDeck as exportCsv, parseDeck } from '../shared/deckParse';
 import type { Card, Deck, DecksFile, GuiltTripRecord, HistoryFile, SessionRecord } from '../shared/model';
-import { DEFAULT_SETTINGS, checkSettings, fillSettings, normalizeExcluded, type Settings } from '../shared/settings';
+import { DEFAULT_SETTINGS, checkSettings, fillSettings, normalizeExcluded, repairSettings, type Settings } from '../shared/settings';
 import { newCard } from '../shared/srs';
 import { isSettings } from '../shared/validate';
 import type { SessionSummary } from './engineHost';
@@ -123,6 +123,19 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
   const decks = await load<DecksFile>(decksStore, 'decks');
   const settings = await load<Settings>(settingsStore, 'settings');
   settings.value = fillSettings(settings.value); // a file saved before the sound settings existed has no such fields
+  if (settings.available) {
+    // Settings that load but would be refused on save (a hand-edited file) are put right here, so the first save does not fail.
+    const fixed = repairSettings(settings.value);
+    if (fixed.repaired) {
+      settings.value = fixed.settings;
+      notices.push({ store: 'settings', kind: 'repaired', detail: 'a setting that could not be used was put back to its default' });
+      try {
+        await opts.storage.write(settings.def, settings.value);
+      } catch {
+        // The repaired values are still what the app uses; the next successful save writes them.
+      }
+    }
+  }
   const hist = await load<HistoryFile>(historyStore, 'history');
 
   function mutate<T, R>(slot: Slot<T>, fn: (draft: T) => Result<R>): Promise<Result<R>> {
@@ -452,7 +465,7 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
         if (!isSettings(next)) return fail('invalid-request', 'that setting is not usable');
         const whole: Settings = { ...fillSettings(next), excludedApps: normalizeExcluded(next.excludedApps) };
         const problem = checkSettings(whole);
-        if (problem !== null) return fail('invalid-request', problem);
+        if (problem !== null) return fail('invalid-request', `settings refused: ${problem}`, { reason: problem });
         Object.assign(draft, whole);
         return good(structuredClone(draft));
       }),

@@ -1,4 +1,5 @@
 import type { SessionView, StartRequest, DeckSummary } from '../../shared/control';
+import { STUDY as T } from '../../shared/i18n/en';
 import { sessionKind, type SessionKind } from '../../shared/sessionKind';
 import { formatClock } from './text';
 
@@ -17,17 +18,17 @@ export function badgeFor(v: Running): Badge {
   const kind = sessionKind(v);
   switch (kind) {
     case 'paused':
-      return { kind, label: 'Paused', detail: 'Pandesal is on Leave it. Nothing will interrupt you until you resume.' };
+      return { kind, ...T.badge.paused };
     case 'stay': {
-      const left = v.stayLeftMs === null ? '' : `${formatClock(v.stayLeftMs)} left. `;
-      return { kind, label: 'Staying', detail: `${left}Pandesal is sitting quietly for your focus block.` };
+      const left = v.stayLeftMs === null ? '' : T.badge.stay.timeLeft(formatClock(v.stayLeftMs));
+      return { kind, label: T.badge.stay.label, detail: `${left}${T.badge.stay.detail}` };
     }
     case 'away':
-      return { kind, label: 'Away', detail: 'You look idle or the screen is locked, so check-ins wait for you.' };
+      return { kind, ...T.badge.away };
     case 'quiet':
-      return { kind, label: 'Quiet', detail: 'A full-screen or excluded app is in front, so Pandesal is staying out of the way.' };
+      return { kind, ...T.badge.quiet };
     case 'running':
-      return { kind, label: 'Running', detail: v.card ? 'Pandesal is waiting for your answer.' : 'The next check-in comes on its own.' };
+      return { kind, label: T.badge.running.label, detail: v.card ? T.badge.running.waiting : T.badge.running.next };
   }
 }
 
@@ -48,16 +49,16 @@ export const wholeMinutes = (s: string): number | null => (/^\s*\d{1,4}\s*$/.tes
 
 /** Why Start is disabled, or the request to send. */
 export function parseStart(draft: StartDraft, decks: readonly DeckSummary[]): StartParse {
-  if (decks.length === 0) return { ok: false, reason: 'Create or import a deck first.' };
+  if (decks.length === 0) return { ok: false, reason: T.parse.noDecks };
   const deck = decks.find((d) => d.id === draft.deckId);
-  if (!deck) return { ok: false, reason: 'Pick a deck to study.' };
-  if (deck.cardCount === 0) return { ok: false, reason: 'That deck has no cards yet. Add or import some first.' };
+  if (!deck) return { ok: false, reason: T.parse.pickDeck };
+  if (deck.cardCount === 0) return { ok: false, reason: T.parse.emptyDeck };
   const lo = wholeMinutes(draft.min);
   const hi = wholeMinutes(draft.max);
   if (lo === null || hi === null || lo < MIN_GAP || hi > MAX_GAP || hi < lo) {
-    return { ok: false, reason: `Check-in gaps are whole minutes from ${MIN_GAP} to ${MAX_GAP}, and the longest cannot be shorter than the shortest.` };
+    return { ok: false, reason: T.parse.badGaps(MIN_GAP, MAX_GAP) };
   }
   const topic = draft.topic.trim();
-  if (topic.length > MAX_TOPIC) return { ok: false, reason: `Keep the topic to ${MAX_TOPIC} characters or fewer.` };
+  if (topic.length > MAX_TOPIC) return { ok: false, reason: T.parse.longTopic(MAX_TOPIC) };
   return { ok: true, request: { deckId: deck.id, topic, checkinMinMinutes: lo, checkinMaxMinutes: hi } };
 }

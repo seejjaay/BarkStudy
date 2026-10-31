@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { MAX_CARD_TEXT, type DeckSummary, type ViewCard } from '../../shared/control';
+import { COMMON as C, DECKS } from '../../shared/i18n/en';
 import { api, attempt } from './api';
 import { PAGE_SIZE, filterCards } from './cardFilter';
-import { errorText, plural } from './text';
+import { errorText } from './text';
 import { useToast } from './toast';
+
+const T = DECKS.cards;
 
 type Load = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; cards: ViewCard[] };
 
@@ -64,7 +67,7 @@ export function CardsView({
     setAddError(null);
     setFront('');
     setBack('');
-    toast(`Added “${r.value.front}”.`);
+    toast(T.added(r.value.front));
     frontField.current?.focus();
     await refresh();
   }
@@ -79,7 +82,7 @@ export function CardsView({
     }
     setEditing(null);
     setEditError(null);
-    toast('Card saved.');
+    toast(T.saved);
     await reload();
   }
 
@@ -91,13 +94,13 @@ export function CardsView({
     }
     await refresh();
     const undo = r.value;
-    toast(`Deleted “${card.front}”.`, {
+    toast(T.deleted(card.front), {
       action: {
-        label: 'Undo',
+        label: C.undo,
         run: () => {
           void (async () => {
             const back = await attempt(api.call('card:restore', undo));
-            if (back.ok) toast(`Restored “${card.front}”.`);
+            if (back.ok) toast(T.restored(card.front));
             else toast(errorText(back.error), { kind: 'error' });
             await refresh();
           })();
@@ -113,16 +116,16 @@ export function CardsView({
       <header className="page-head">
         <div>
           <button type="button" className="btn btn-quiet" onClick={onBack}>
-            ← All decks
+            {T.allDecks}
           </button>
           <h1 id="cards-title" tabIndex={-1} ref={heading}>
             {deck.name}
           </h1>
-          <p className="muted">{plural(deck.cardCount, 'card')}</p>
+          <p className="muted">{C.cards(deck.cardCount)}</p>
         </div>
         <div className="actions">
           <button type="button" className="btn" onClick={onImport}>
-            Import cards…
+            {DECKS.importCards}
           </button>
         </div>
       </header>
@@ -130,16 +133,16 @@ export function CardsView({
       {inUse && (
         <div className="banner banner-warn" role="status">
           <span>
-            <strong>A session is using this deck,</strong> so its cards are read-only until you end it.
+            <strong>{T.inUseLead}</strong> {T.inUseBody}
           </span>
         </div>
       )}
 
       <form className="card-panel form wide" onSubmit={(e) => void add(e)}>
-        <h2>Add a card</h2>
+        <h2>{T.addTitle}</h2>
         <div className="two-col">
           <div className="field">
-            <label htmlFor={ids.front}>Front</label>
+            <label htmlFor={ids.front}>{T.front}</label>
             <textarea
               id={ids.front}
               ref={frontField}
@@ -153,7 +156,7 @@ export function CardsView({
             />
           </div>
           <div className="field">
-            <label htmlFor={ids.back}>Back</label>
+            <label htmlFor={ids.back}>{T.back}</label>
             <textarea
               id={ids.back}
               rows={2}
@@ -173,36 +176,36 @@ export function CardsView({
         )}
         <div className="actions">
           <button type="submit" className="btn btn-primary" disabled={inUse || front.trim() === '' || back.trim() === ''}>
-            Add card
+            {T.addCard}
           </button>
-          <span className="hint">Ctrl+Enter also adds it.</span>
+          <span className="hint">{T.ctrlEnter}</span>
         </div>
       </form>
 
       {load.status === 'loading' && (
         <p className="muted" role="status">
-          Loading cards…
+          {T.loading}
         </p>
       )}
       {load.status === 'error' && (
         <div className="empty" role="alert">
-          <h2>Couldn&apos;t load the cards</h2>
+          <h2>{T.loadFailed}</h2>
           <p className="muted">{load.message}</p>
           <button type="button" className="btn btn-primary" onClick={() => void reload()}>
-            Try again
+            {C.tryAgain}
           </button>
         </div>
       )}
       {load.status === 'ready' && load.cards.length === 0 && (
         <div className="empty">
-          <h2>No cards in this deck yet</h2>
-          <p className="muted">Add the first one above, or import a batch from a spreadsheet, Quizlet or Anki.</p>
+          <h2>{T.emptyTitle}</h2>
+          <p className="muted">{T.emptyBody}</p>
         </div>
       )}
       {load.status === 'ready' && load.cards.length > 0 && (
         <>
           <div className="field search">
-            <label htmlFor={ids.search}>Search cards</label>
+            <label htmlFor={ids.search}>{T.search}</label>
             <input
               id={ids.search}
               type="text"
@@ -216,12 +219,12 @@ export function CardsView({
           </div>
           {matches.length === 0 ? (
             <div className="empty">
-              <h2>No cards match “{query.trim()}”</h2>
+              <h2>{T.noMatch(query.trim())}</h2>
             </div>
           ) : (
             <>
               <p className="muted" role="status">
-                {query.trim() === '' ? `Showing ${Math.min(shown, matches.length)} of ${plural(matches.length, 'card')}` : `${plural(matches.length, 'card')} match`}
+                {query.trim() === '' ? T.showing(Math.min(shown, matches.length), C.cards(matches.length)) : T.matching(C.cards(matches.length))}
               </p>
               <ul className="rows">
                 {matches.slice(0, shown).map((c) => (
@@ -230,7 +233,7 @@ export function CardsView({
                       <form className="grow edit-form" onSubmit={(e) => void save(e)}>
                         <div className="two-col">
                           <div className="field">
-                            <label htmlFor={`${ids.front}-e`}>Front</label>
+                            <label htmlFor={`${ids.front}-e`}>{T.front}</label>
                             <textarea
                               id={`${ids.front}-e`}
                               rows={2}
@@ -245,7 +248,7 @@ export function CardsView({
                             />
                           </div>
                           <div className="field">
-                            <label htmlFor={`${ids.back}-e`}>Back</label>
+                            <label htmlFor={`${ids.back}-e`}>{T.back}</label>
                             <textarea
                               id={`${ids.back}-e`}
                               rows={2}
@@ -266,10 +269,10 @@ export function CardsView({
                         )}
                         <div className="actions">
                           <button type="submit" className="btn btn-primary" disabled={editing.front.trim() === '' || editing.back.trim() === ''}>
-                            Save
+                            {C.save}
                           </button>
                           <button type="button" className="btn btn-quiet" onClick={() => setEditing(null)}>
-                            Cancel
+                            {C.cancel}
                           </button>
                         </div>
                       </form>
@@ -284,16 +287,16 @@ export function CardsView({
                             type="button"
                             className="btn btn-quiet"
                             disabled={inUse}
-                            aria-label={`Edit ${c.front}`}
+                            aria-label={T.editLabel(c.front)}
                             onClick={() => {
                               setEditing({ id: c.id, front: c.front, back: c.back });
                               setEditError(null);
                             }}
                           >
-                            Edit
+                            {T.edit}
                           </button>
-                          <button type="button" className="btn btn-quiet btn-danger" disabled={inUse} aria-label={`Delete ${c.front}`} onClick={() => void remove(c)}>
-                            Delete
+                          <button type="button" className="btn btn-quiet btn-danger" disabled={inUse} aria-label={T.deleteLabel(c.front)} onClick={() => void remove(c)}>
+                            {T.delete}
                           </button>
                         </div>
                       </>
@@ -303,7 +306,7 @@ export function CardsView({
               </ul>
               {matches.length > shown && (
                 <button type="button" className="btn" onClick={() => setShown(shown + PAGE_SIZE)}>
-                  Show {Math.min(PAGE_SIZE, matches.length - shown)} more
+                  {T.showMore(Math.min(PAGE_SIZE, matches.length - shown))}
                 </button>
               )}
             </>

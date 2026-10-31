@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { COMMON as C } from '../../shared/i18n/en';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -50,7 +51,7 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
       <div className="dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={box}>
         <div className="dialog-head">
           <h2 id={titleId}>{title}</h2>
-          <button type="button" className="btn btn-quiet" aria-label="Close" onClick={onClose}>
+          <button type="button" className="btn btn-quiet" aria-label={C.close} onClick={onClose}>
             ×
           </button>
         </div>

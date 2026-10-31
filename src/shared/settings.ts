@@ -58,40 +58,57 @@ type Added = 'soundOn' | 'volume' | 'onboarded' | 'reducedMotion' | 'updateCheck
 /** Settings as they may sit on disk: a file saved before these fields existed lacks them. */
 export type StoredSettings = Omit<Settings, Added> & Partial<Pick<Settings, Added>>;
 
-/** Fills whatever an older file lacks with the defaults. Never changes a value that is there. */
+/** Fills whatever an older file lacks with the defaults, and keeps only keys that are settings. Never changes a value that is there. */
 export function fillSettings(s: StoredSettings): Settings {
-  return {
-    ...s,
-    soundOn: s.soundOn ?? DEFAULT_SETTINGS.soundOn,
-    volume: s.volume ?? DEFAULT_SETTINGS.volume,
-    onboarded: s.onboarded ?? DEFAULT_SETTINGS.onboarded,
-    reducedMotion: s.reducedMotion ?? DEFAULT_SETTINGS.reducedMotion,
-    updateChecks: s.updateChecks ?? DEFAULT_SETTINGS.updateChecks,
-    betaChannel: s.betaChannel ?? DEFAULT_SETTINGS.betaChannel,
-    bubbleHotkey: s.bubbleHotkey ?? DEFAULT_SETTINGS.bubbleHotkey,
-  };
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof Settings)[]) out[key] = s[key] ?? DEFAULT_SETTINGS[key];
+  return out as unknown as Settings;
 }
 
 /** Lower case, trimmed, folder-free, no blanks, no repeats: the form the suppress check compares against. */
 export function normalizeExcluded(apps: readonly string[]): string[] {
-  const out: string[] = [];
+  const seen = new Set<string>();
   for (const raw of apps) {
     const name = raw.trim().replace(/^.*[\\/]/, '').trim().toLowerCase();
-    if (name !== '' && !out.includes(name)) out.push(name);
+    if (name !== '') seen.add(name);
   }
-  return out;
+  return [...seen];
 }
 
+/** Why settings are refused. The settings page has a sentence for each. */
+export type SettingsReason = 'too-many-apps' | 'bad-interval' | 'same-shortcut' | 'bad-shortcut' | 'bad-preset' | 'bad-app-name';
+
 /** Why these settings must not be saved, or null if they are fine. Stricter than the stored-file check, which only guards against crashes. */
-export function checkSettings(s: Settings): string | null {
-  if (!Object.hasOwn(TRAIT_PRESETS, s.preset)) return 'unknown personality preset';
+export function checkSettings(s: Settings): SettingsReason | null {
+  if (!Object.hasOwn(TRAIT_PRESETS, s.preset)) return 'bad-preset';
   const { checkinMinMinutes: lo, checkinMaxMinutes: hi } = s;
-  if (!Number.isInteger(lo) || !Number.isInteger(hi) || lo < 1 || hi < lo || hi > MAX_INTERVAL_MINUTES) {
-    return 'check-in minutes must be whole numbers from 1 to 240, shortest first';
-  }
-  if (s.excludedApps.length > MAX_EXCLUDED_APPS) return 'too many excluded apps';
-  if (s.excludedApps.some((a) => a.trim() === '' || a.length > MAX_EXCLUDED_APP_CHARS)) return 'an excluded app name is empty or too long';
-  if (!isAccelerator(s.leaveItHotkey) || !isAccelerator(s.bubbleHotkey)) return 'a shortcut is not usable';
-  if (sameAccelerator(s.leaveItHotkey, s.bubbleHotkey)) return 'the two shortcuts must differ';
+  if (!Number.isInteger(lo) || !Number.isInteger(hi) || lo < 1 || hi < lo || hi > MAX_INTERVAL_MINUTES) return 'bad-interval';
+  if (s.excludedApps.length > MAX_EXCLUDED_APPS) return 'too-many-apps';
+  if (s.excludedApps.some((a) => a.trim() === '' || a.length > MAX_EXCLUDED_APP_CHARS)) return 'bad-app-name';
+  if (!isAccelerator(s.leaveItHotkey) || !isAccelerator(s.bubbleHotkey)) return 'bad-shortcut';
+  if (sameAccelerator(s.leaveItHotkey, s.bubbleHotkey)) return 'same-shortcut';
   return null;
+}
+
+/**
+ * Settings that were valid enough to load but would be refused on save (a hand-edited file, an older build) go back to
+ * their defaults one field at a time, so one bad value never costs the rest. `repaired` says whether anything changed.
+ */
+export function repairSettings(s: Settings): { settings: Settings; repaired: boolean } {
+  const out: Settings = { ...s };
+  if (!Object.hasOwn(TRAIT_PRESETS, out.preset)) out.preset = DEFAULT_SETTINGS.preset;
+  const { checkinMinMinutes: lo, checkinMaxMinutes: hi } = out;
+  if (!Number.isInteger(lo) || !Number.isInteger(hi) || lo < 1 || hi < lo || hi > MAX_INTERVAL_MINUTES) {
+    out.checkinMinMinutes = DEFAULT_SETTINGS.checkinMinMinutes;
+    out.checkinMaxMinutes = DEFAULT_SETTINGS.checkinMaxMinutes;
+  }
+  out.excludedApps = normalizeExcluded(out.excludedApps.filter((a) => a.length <= MAX_EXCLUDED_APP_CHARS)).slice(0, MAX_EXCLUDED_APPS);
+  if (!isAccelerator(out.leaveItHotkey)) out.leaveItHotkey = DEFAULT_SETTINGS.leaveItHotkey;
+  if (!isAccelerator(out.bubbleHotkey)) out.bubbleHotkey = DEFAULT_SETTINGS.bubbleHotkey;
+  if (sameAccelerator(out.leaveItHotkey, out.bubbleHotkey)) {
+    out.bubbleHotkey = DEFAULT_SETTINGS.bubbleHotkey;
+    // The bubble default can itself be what Leave it was set to.
+    if (sameAccelerator(out.leaveItHotkey, out.bubbleHotkey)) out.leaveItHotkey = DEFAULT_SETTINGS.leaveItHotkey;
+  }
+  return { settings: out, repaired: JSON.stringify(out) !== JSON.stringify(s) };
 }

@@ -1,6 +1,7 @@
 import { useId, useState, type KeyboardEvent } from 'react';
 import { acceleratorFromKeyEvent, acceleratorLabel } from '../../shared/accelerator';
 import type { Result } from '../../shared/control';
+import { SETTINGS } from '../../shared/i18n/en';
 import { describe } from './api';
 
 /** Form controls the settings page and onboarding share, so a choice looks and behaves the same in both. */
@@ -84,7 +85,7 @@ export function HotkeyField({
     if (MODIFIER_KEYS.includes(e.key)) return; // wait for the key that goes with it
     const next = acceleratorFromKeyEvent(e.nativeEvent);
     if (next === null) {
-      setError('Hold Ctrl and Alt together and press a letter, number or function key. Esc cancels.');
+      setError(SETTINGS.hotkey.badCombination);
       return;
     }
     setListening(false);
@@ -105,7 +106,7 @@ export function HotkeyField({
         <button
           type="button"
           className="btn"
-          aria-label={listening ? `${label}: press the new shortcut, Esc cancels` : `${label}: ${acceleratorLabel(accelerator)}, choose to change`}
+          aria-label={listening ? SETTINGS.hotkey.listeningLabel(label) : SETTINGS.hotkey.idleLabel(label, acceleratorLabel(accelerator))}
           aria-describedby={describedBy}
           disabled={busy}
           onClick={() => {
@@ -115,9 +116,9 @@ export function HotkeyField({
           onKeyDown={onKeyDown}
           onBlur={() => setListening(false)}
         >
-          {listening ? 'Press the new shortcut…' : acceleratorLabel(accelerator)}
+          {listening ? SETTINGS.hotkey.pressNew : acceleratorLabel(accelerator)}
         </button>
-        <span className="hint">{listening ? 'Esc cancels. If nothing happens, another app already uses that shortcut.' : 'Choose to change it.'}</span>
+        <span className="hint">{listening ? SETTINGS.hotkey.listeningNote : SETTINGS.hotkey.idleNote}</span>
       </div>
       <p id={describedBy} className="hint">
         {hint}

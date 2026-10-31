@@ -154,6 +154,23 @@ describe('settings', () => {
     expect(Object.keys(onDisk.data)).not.toContain('extra');
   });
 
+  it('a stored hotkey that cannot be used opens as the default, with a repaired notice and a rewritten file; settings can then be saved', async () => {
+    fs.writeFileSync(join(dir, 'settings.json'), JSON.stringify({ schemaVersion: 1, data: { ...preM4Data, leaveItHotkey: 'L' } }));
+    const lib = await open();
+    expect(lib.getSettings()).toMatchObject({ leaveItHotkey: DEFAULT_SETTINGS.leaveItHotkey, cap: 3, checkinMinMinutes: 7 });
+    expect(lib.notices()).toEqual([expect.objectContaining({ store: 'settings', kind: 'repaired' })]);
+    const onDisk = JSON.parse(fs.readFileSync(join(dir, 'settings.json'), 'utf8')) as { data: Record<string, unknown> };
+    expect(onDisk.data['leaveItHotkey']).toBe(DEFAULT_SETTINGS.leaveItHotkey);
+    expect(ok(await lib.updateSettings({ soundOn: false })).soundOn).toBe(false);
+  });
+
+  it('settings that need no repair open with no notice and the file untouched', async () => {
+    fs.writeFileSync(join(dir, 'settings.json'), preM4);
+    const lib = await open();
+    expect(lib.notices()).toEqual([]);
+    expect(fs.readFileSync(join(dir, 'settings.json'), 'utf8')).toBe(preM4);
+  });
+
   it('a settings file with a sound field of the wrong type is set aside like any other bad file', async () => {
     fs.writeFileSync(join(dir, 'settings.json'), JSON.stringify({ schemaVersion: 1, data: { ...preM4Data, volume: 7 } }));
     const lib = await open();
