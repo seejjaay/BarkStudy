@@ -104,3 +104,38 @@ export const SETTINGS_TEXT = {
   resetBody: 'This removes all your decks, your history and your settings, and Pandesal will walk you through setup again. A copy of your current data stays in the backups folder.',
   updatesNote: 'Update checking arrives in a later version. Your choice is saved for then.',
 };
+
+/** First-run onboarding and the About page. The dog is male: he/him. */
+export const ONBOARDING_TEXT = {
+  title: {
+    meet: 'Meet Pandesal',
+    personality: 'How much dog do you want?',
+    escape: 'Two ways to make him stop',
+    privacy: 'What he can see',
+    login: 'Start with Windows?',
+    sample: 'Something to study',
+  },
+  meet: [
+    'Pandesal is a small, needy dog who lives on top of your windows. He quizzes you from your own flashcards, and when you ignore him he gets louder and sillier.',
+    'He never goes beyond the limit you set. The next screens set that limit, and show you how to stop him.',
+  ],
+  escapeEsc: 'Esc ends zoomies or a dig-in at once, from any app. It always works and can’t be changed.',
+  escapeLeaveIt: (label: string) => `${label} is Leave it: it pauses Pandesal until you press it again. Press it now, once, to see that it works.`,
+  escapeWaiting: 'Waiting for you to press it…',
+  escapeDone: 'That worked. Pandesal would be paused now.',
+  escapeTaken: (label: string) => `${label} is used by another app, so Leave it can’t listen for it. Pick another shortcut, or go on and use the tray menu instead.`,
+  continueAnyway: 'Go on without it',
+  privacy: [
+    'BarkStudy looks at where your windows are and which program owns each one, so Pandesal can walk along title bars. It never reads window titles or contents, and never takes screenshots.',
+    'Your decks, history and settings stay on this PC. The only thing that can ever go online is a check for new versions, and you can switch that off.',
+  ],
+  login: 'Start BarkStudy when I sign in to Windows. It starts quietly in the tray; Pandesal is there, the window isn’t.',
+  sample: 'Add Pandesal’s starter deck: twelve short cards, so your first session works straight away.',
+  sampleHave: 'You already have the starter deck, so there is nothing to add.',
+  skip: 'Skip setup',
+  cancel: 'Cancel',
+  finish: 'Start studying',
+  failed: 'Setup could not be saved.',
+  aboutBlurb: 'A study companion for Windows. Pandesal walks along your windows, quizzes you from your own flashcards with spaced repetition, and escalates, politely, when you ignore him.',
+  aboutLicense: 'Free and open source under the MIT license.',
+};
