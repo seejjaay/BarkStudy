@@ -14,6 +14,8 @@ export interface LeaveItDeps {
   notify: (message: string) => void;
   /** Called whenever the conflict state changes, so the UI can follow. */
   onConflictChange: (conflict: boolean) => void;
+  /** Offered a press that has no session to act on. Return true if it took the press (onboarding practice); false falls back to the quiet message. */
+  idlePress?: () => boolean;
 }
 
 export interface LeaveIt {
@@ -32,7 +34,8 @@ export function createLeaveIt(deps: LeaveItDeps): LeaveIt {
   let attempted: string | null = null;
 
   function press(): void {
-    if (toggleLeaveIt(deps.session) === 'no-session') deps.notify('Leave it works while a session is running. Nothing to pause right now.');
+    if (toggleLeaveIt(deps.session) !== 'no-session') return;
+    if (deps.idlePress?.() !== true) deps.notify('Leave it works while a session is running. Nothing to pause right now.');
   }
 
   function setConflict(next: boolean): void {

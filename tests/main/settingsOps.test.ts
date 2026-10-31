@@ -26,6 +26,8 @@ let bubbleTaken: boolean;
 const files: FileAccess = {
   pickImport: () => Promise.resolve({ ok: true, value: null }),
   saveExport: () => Promise.resolve(null),
+  pickBackup: () => Promise.resolve({ ok: true, value: null }),
+  saveBackup: () => Promise.resolve(null),
 };
 const call = <T = unknown>(op: string, args?: unknown) => h.handle(op, args) as Promise<T>;
 const ok = <T>(r: Result<T>): T => {
@@ -63,6 +65,10 @@ beforeEach(async () => {
       dataDir: 'C:/data',
       openLink: (url) => void opened.push(url),
       applyReducedMotion: (mode) => void motion.push(mode),
+      version: '1.2.3',
+      openPath: () => Promise.resolve(''),
+      afterReplace: () => undefined,
+      setPractice: () => undefined,
     },
     hotkeys: {
       leaveIt: {

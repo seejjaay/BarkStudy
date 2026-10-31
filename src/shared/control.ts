@@ -139,6 +139,10 @@ export interface LibrarySnapshot {
   leaveItConflict: boolean;
   /** How the Leave it shortcut is written, such as "Ctrl+Alt+L". */
   leaveItLabel: string;
+  /** False until onboarding has been finished or skipped once. */
+  onboarded: boolean;
+  /** The app version, for the About page. */
+  version: string;
 }
 
 /** The settings that `settings:update` may change. Shortcuts have their own operation (they must be bound first) and `onboarded` is set by finishing onboarding. */
@@ -159,6 +163,14 @@ export interface SettingsView {
   openApps: string[];
   /** Where the data files live, for display. */
   dataDir: string;
+}
+
+export interface OnboardingFinish {
+  cap: Settings['cap'];
+  preset: Settings['preset'];
+  updateChecks: boolean;
+  /** Add Pandesal's starter deck if it is not there yet. */
+  sampleDeck: boolean;
 }
 
 export interface StartRequest {
@@ -200,6 +212,17 @@ export interface ControlOps {
   'settings:hotkey': [{ which: 'leaveIt' | 'bubble'; accelerator: string }, Result<Settings>];
   'settings:login-item': [{ on: boolean }, Result<LoginItemState>];
   'link:open': [{ id: LinkId }, Result<void>];
+  'data:open-folder': [void, Result<void>];
+  /** Main opens the save dialog. `null` inside `ok` means the user cancelled. */
+  'data:export-all': [void, Result<{ path: string } | null>];
+  /** Main opens the file dialog and replaces everything with the backup. Refused while a session runs. */
+  'data:import-all': [void, Result<{ path: string } | null>];
+  /** Refused while a session runs. */
+  'data:reset': [void, Result<void>];
+  /** While on, a Leave it press with no session is reported as a `leave-it-pressed` event instead of a notification. */
+  'onboarding:practice': [{ on: boolean }, void];
+  /** Saves the choices, marks onboarding done and returns the starter deck's id (null if not asked for). */
+  'onboarding:finish': [OnboardingFinish, Result<{ deckId: string | null }>];
 }
 
 export type OpName = keyof ControlOps;
@@ -231,6 +254,12 @@ export const OP_NAMES: readonly OpName[] = [
   'settings:hotkey',
   'settings:login-item',
   'link:open',
+  'data:open-folder',
+  'data:export-all',
+  'data:import-all',
+  'data:reset',
+  'onboarding:practice',
+  'onboarding:finish',
 ];
 
 export interface AppStatus {
@@ -239,7 +268,7 @@ export interface AppStatus {
   leaveItLabel: string;
 }
 
-export type ControlEvent = { type: 'session'; view: SessionView } | ({ type: 'status' } & AppStatus);
+export type ControlEvent = { type: 'session'; view: SessionView } | ({ type: 'status' } & AppStatus) | { type: 'leave-it-pressed' };
 
 /** `window.barkControl`, exposed by the control window's preload. */
 export interface BarkControlApi {

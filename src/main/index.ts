@@ -123,6 +123,11 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
     hotkeys,
     notify,
     onConflictChange: () => publishStatus(),
+    idlePress: () => {
+      if (!leaveItPractice) return false;
+      controlWindow.send({ type: 'leave-it-pressed' });
+      return true;
+    },
   });
   const appTray = createTray({
     inputs: () => ({
@@ -155,6 +160,15 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
     ipcMain.on(channel, (event, payload: unknown) => void bubble.handle(channel, event.sender, payload));
   }
   let rawWindows: RawWindow[] = [];
+  // e2e only: a test cannot click a native dialog, so it names the file for the next backup export or restore instead.
+  let nextDialogPath: string | null = null;
+  const takeDialogPath = (): string | null => {
+    const path = nextDialogPath;
+    nextDialogPath = null;
+    return path;
+  };
+  // While the first-run Leave it practice is on, a press with no session is the answer to "press it once".
+  let leaveItPractice = false;
   // Follows the saved choice: "system" asks Windows, which is read again whenever the displays change.
   const applyReducedMotion = (mode: Settings['reducedMotion']): void => {
     try {
@@ -166,7 +180,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
   const handlers = createControlHandlers({
     library,
     session: studySession,
-    files: createFileAccess(() => controlWindow.window()),
+    files: createFileAccess(() => controlWindow.window(), e2e ? takeDialogPath : undefined),
     status: appStatus,
     platform: {
       // Start-with-Windows is for the installed app; a development run would register electron.exe.
@@ -178,6 +192,18 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       dataDir: join(app.getPath('userData'), 'data'),
       openLink: (url) => void shell.openExternal(url),
       applyReducedMotion,
+      version: app.getVersion(),
+      openPath: (path) => shell.openPath(path),
+      // The saved shortcuts, reduced motion and tray follow the settings that were just swapped in.
+      afterReplace: () => {
+        const saved = library.getSettings();
+        leaveIt.rebind(saved.leaveItHotkey);
+        applyReducedMotion(saved.reducedMotion);
+        publishStatus();
+      },
+      setPractice: (on) => {
+        leaveItPractice = on;
+      },
     },
     hotkeys: { leaveIt: { rebind: (a) => leaveIt.rebind(a) }, bubble: { rebind: (a) => bubble.rebind(a) } },
   });
@@ -254,6 +280,9 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       escapeKey,
       recorder,
       library,
+      setNextDialogPath: (path) => {
+        nextDialogPath = path;
+      },
     });
   }
 

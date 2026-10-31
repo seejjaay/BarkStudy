@@ -102,3 +102,45 @@ describe('Leave it hotkey', () => {
     expect(registered.size).toBe(0);
   });
 });
+
+describe('a press with nothing to pause', () => {
+  function withIdlePress(idlePress: () => boolean): void {
+    leave = createLeaveIt({
+      session: { view: () => view, control },
+      hotkeys: {
+        register: (accel, fn) => {
+          registered.set(accel, fn);
+          return true;
+        },
+        unregister: (accel) => void registered.delete(accel),
+      },
+      notify,
+      onConflictChange: () => undefined,
+      idlePress,
+    });
+    leave.register('Control+Alt+L');
+  }
+
+  it('goes to the idle-press hook when that handles it, with no notification', () => {
+    const hook = vi.fn(() => true);
+    withIdlePress(hook);
+    registered.get('Control+Alt+L')!();
+    expect(hook).toHaveBeenCalledOnce();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('says the usual quiet message when the hook declines', () => {
+    withIdlePress(() => false);
+    registered.get('Control+Alt+L')!();
+    expect(notify).toHaveBeenCalledOnce();
+  });
+
+  it('a running session still pauses, and the hook never hears about it', () => {
+    const hook = vi.fn(() => true);
+    withIdlePress(hook);
+    view = runningView(false);
+    registered.get('Control+Alt+L')!();
+    expect(control).toHaveBeenLastCalledWith({ action: 'pause' });
+    expect(hook).not.toHaveBeenCalled();
+  });
+});

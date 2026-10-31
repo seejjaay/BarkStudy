@@ -57,7 +57,7 @@ function Shell() {
     api.onEvent((e) => {
       sawEvent.current = true;
       if (e.type === 'session') setSession(e.view);
-      else {
+      else if (e.type === 'status') {
         setTrackerDown(e.trackerDown);
         setLeaveIt({ conflict: e.leaveItConflict, label: e.leaveItLabel });
       }

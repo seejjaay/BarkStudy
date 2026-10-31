@@ -26,10 +26,12 @@ const files: FileAccess = {
     saved.push({ name, csv });
     return Promise.resolve({ path: `C:\\out\\${name}` });
   },
+  pickBackup: () => Promise.resolve({ ok: true, value: null }),
+  saveBackup: () => Promise.resolve(null),
 };
 // The settings operations have their own tests (settingsOps.test.ts); these are the quiet defaults.
 const quiet = {
-  platform: { loginItem: { get: () => ({ available: false, on: false }), set: () => undefined }, openApps: () => [], dataDir: 'C:/data', openLink: () => undefined, applyReducedMotion: () => undefined },
+  platform: { loginItem: { get: () => ({ available: false, on: false }), set: () => undefined }, openApps: () => [], dataDir: 'C:/data', openLink: () => undefined, applyReducedMotion: () => undefined, version: '1.2.3', openPath: () => Promise.resolve(''), afterReplace: () => undefined, setPractice: () => undefined },
   hotkeys: { leaveIt: { rebind: () => true }, bubble: { rebind: () => true } },
 };
 const call = <T = unknown>(op: string, args?: unknown) => h.handle(op, args) as Promise<T>;
