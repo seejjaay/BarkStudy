@@ -47,6 +47,7 @@ Legend: **auto** = covered by an automated test on the dev machine at the stated
 | 26 | First run, the "Two ways to make him stop" step: pressing the real Ctrl+Alt+L on a real keyboard (not a simulated press) unlocks Next, and the step says it worked | todo | auto (e2e `onboarding.spec.ts` runs the registered shortcut through the debug hook, not the OS key path) **+ todo (a person presses the keys)** | todo | todo | `onboarding.spec.ts`, `onboardingFlow.test.ts` |
 | 27 | Start with Windows, in the **installed** app (M6): ticking it makes BarkStudy start at sign-in with the tray icon and the dog but no window; unticking it stops that | n/a (not offered unpackaged) | todo (needs the M6 installer) | todo | todo | `settingsOps.test.ts` (platform fake only) |
 | 28 | Settings and onboarding at 150 % display scale and with Windows text size raised: nothing clipped or overlapping, focus ring visible, the dog picture sharp | todo | todo | todo | todo | none (the M5b accessibility pass covers text scaling) |
+| 29 | Settings → Controls: pick a shortcut another app already owns (or the other BarkStudy shortcut) on a real keyboard. Windows hands that combination to its owner, so the field keeps saying "Press the new shortcut…" with the hint that another app may use it; Esc or clicking away cancels and the old shortcut still works | todo | todo (a simulated key press never reaches the OS shortcut layer, so no automated test sees this) | todo | todo | `settingsOps.test.ts` covers the `hotkey-taken` path in main only |
 
 ## Notes
 

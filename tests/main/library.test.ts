@@ -501,7 +501,7 @@ describe('whole-data backup', () => {
     const json = ok(lib.exportAll());
     ok(await lib.replaceAll(json));
     for (const name of ['decks', 'settings', 'history']) {
-      expect(backupFiles().some((f) => f.startsWith(`${name}.v1-`)), name).toBe(true);
+      expect(backupFiles().some((f) => f.startsWith(`${name}.before-replace-v1-`)), name).toBe(true);
     }
   });
 
@@ -514,8 +514,8 @@ describe('whole-data backup', () => {
     ok(await lib.replaceAll(good));
     expect(lib.notices()).toEqual([]);
     ok(await lib.createDeck('Works again'));
-    expect(backupFiles().some((f) => f.startsWith('decks.v99-'))).toBe(true);
-    expect(fs.readFileSync(join(dir, 'backups', backupFiles().find((f) => f.startsWith('decks.v99-'))!), 'utf8')).toBe(future);
+    expect(backupFiles().some((f) => f.startsWith('decks.before-replace-v99-'))).toBe(true);
+    expect(fs.readFileSync(join(dir, 'backups', backupFiles().find((f) => f.startsWith('decks.before-replace-v99-'))!), 'utf8')).toBe(future);
   });
 
   it('reset leaves no decks or history, default settings with onboarding to do, and backups of what was there', async () => {
@@ -525,18 +525,72 @@ describe('whole-data backup', () => {
     expect(lib.listSessions()).toEqual([]);
     expect(lib.history()).toEqual({ sessions: [], guiltTrips: [], treats: 0 });
     expect(lib.getSettings()).toEqual(DEFAULT_SETTINGS);
-    expect(backupFiles().some((f) => f.startsWith('decks.v1-'))).toBe(true);
+    expect(backupFiles().some((f) => f.startsWith('decks.before-replace-v1-'))).toBe(true);
     expect(stateOf(await open())).toEqual(stateOf(lib));
   });
 
-  it('a write that fails part way reports write-failed and names what was already replaced', async () => {
+  it('a write that fails part way says part of the data was replaced, and names what', async () => {
     const lib = await populated();
     const json = ok(lib.exportAll());
     let renames = 0;
     const flaky = await open({ fs: { ...nodeFs, rename: (a, b) => (++renames > 1 ? Promise.reject(Object.assign(new Error('disk'), { code: 'EIO' })) : nodeFs.rename(a, b)) } });
     const r = await flaky.replaceAll(json);
-    expect(code(r)).toBe('write-failed');
+    expect(code(r)).toBe('partly-replaced');
     expect(r.ok ? '' : r.error.message).toContain('decks');
+  });
+
+  it('a save that fails on the very first store is a plain write-failed, because nothing was replaced', async () => {
+    const lib = await populated();
+    const json = ok(lib.exportAll());
+    const before = stateOf(lib);
+    const flaky = await open({ fs: { ...nodeFs, rename: () => Promise.reject(Object.assign(new Error('disk'), { code: 'EIO' })) } });
+    expect(code(await flaky.replaceAll(json))).toBe('write-failed');
+    expect(stateOf(await open())).toEqual(before);
+  });
+
+  it('a backup that cannot be made stops everything before any store is overwritten', async () => {
+    const lib = await populated();
+    const json = ok(lib.exportAll());
+    ok(await lib.createDeck('Added after the export'));
+    let blocked = false;
+    const guarded = await open({
+      fs: { ...nodeFs, readFile: (p) => (blocked && p.endsWith('settings.json') ? Promise.reject(Object.assign(new Error('locked'), { code: 'EPERM' })) : nodeFs.readFile(p)) },
+    });
+    const before = stateOf(guarded);
+    const files = filesOf();
+    blocked = true;
+    expect(code(await guarded.replaceAll(json))).toBe('write-failed');
+    expect(stateOf(guarded)).toEqual(before);
+    expect(filesOf()).toEqual(files);
+  });
+
+  it('many restores and resets in a row never push out the data that was there first', async () => {
+    const lib = await populated();
+    ok(await lib.resetAll());
+    for (let i = 0; i < 7; i++) {
+      ok(await lib.createDeck(`Scratch ${i}`));
+      ok(await lib.resetAll());
+    }
+    const kept = backupFiles().filter((f) => f.startsWith('decks.before-replace-'));
+    expect(kept.some((f) => fs.readFileSync(join(dir, 'backups', f), 'utf8').includes('French'))).toBe(true);
+  });
+
+  it('resetting a library that is already empty does not spend a backup on nothing', async () => {
+    const lib = await open();
+    ok(await lib.createDeck('One'));
+    ok(await lib.resetAll());
+    const count = backupFiles().length;
+    ok(await lib.resetAll());
+    expect(backupFiles()).toHaveLength(count);
+  });
+
+  it('restore and reset backups are not what a damaged file is repaired from', async () => {
+    const lib = await populated();
+    ok(await lib.resetAll());
+    fs.writeFileSync(join(dir, 'decks.json'), '{"half');
+    const reopened = await open();
+    expect(reopened.notices()).toEqual([expect.objectContaining({ store: 'decks', kind: 'recovered' })]);
+    expect(reopened.listDecks()).toEqual([]);
   });
 
   it('the committed v1 backup still imports', async () => {

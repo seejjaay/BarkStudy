@@ -186,10 +186,27 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
     return good({ decks: d.value, settings: settingsValue, history: h.value });
   }
 
-  function replaceSlot<T>(slot: Slot<T>, value: T): Promise<Result<void>> {
-    const job = async (): Promise<Result<void>> => {
+  /** Runs `job` after everything already queued for this store. */
+  function onChain<R>(slot: Slot<unknown>, job: () => Promise<R>): Promise<R> {
+    const run = slot.chain.then(job, job);
+    slot.chain = run.catch(() => undefined);
+    return run;
+  }
+
+  function backupSlot(slot: Slot<unknown>): Promise<Result<void>> {
+    return onChain(slot, async () => {
       try {
         await opts.storage.backup(slot.def);
+        return good(undefined);
+      } catch (e) {
+        return fail('write-failed', `could not back up ${slot.def.name}: ${messageOf(e)}`);
+      }
+    });
+  }
+
+  function replaceSlot<T>(slot: Slot<T>, value: T): Promise<Result<void>> {
+    return onChain(slot, async () => {
+      try {
         await opts.storage.write(slot.def, value);
       } catch (e) {
         return fail('write-failed', messageOf(e));
@@ -198,13 +215,15 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
       slot.available = true;
       for (let i = notices.length - 1; i >= 0; i--) if (notices[i]!.store === slot.def.name) notices.splice(i, 1);
       return good(undefined);
-    };
-    const run = slot.chain.then(job, job);
-    slot.chain = run.catch(() => undefined);
-    return run;
+    });
   }
 
   async function applyAll(all: Everything): Promise<Result<void>> {
+    // Every backup comes first, so a file that cannot be copied stops things while nothing has been overwritten.
+    for (const slot of [decks, settings, hist] as Slot<unknown>[]) {
+      const saved = await backupSlot(slot);
+      if (!saved.ok) return fail('write-failed', `${saved.error.message}. Nothing was changed.`);
+    }
     const done: string[] = [];
     const steps: [string, () => Promise<Result<void>>][] = [
       ['decks', () => replaceSlot(decks, all.decks)],
@@ -213,7 +232,11 @@ export async function createLibrary(opts: LibraryOptions): Promise<Library> {
     ];
     for (const [name, run] of steps) {
       const r = await run();
-      if (!r.ok) return fail('write-failed', `${r.error.message}; already replaced: ${done.length > 0 ? done.join(', ') : 'nothing'}. The old files are in the backups folder.`);
+      if (!r.ok) {
+        return done.length === 0
+          ? fail('write-failed', `${r.error.message}. Nothing was changed.`)
+          : fail('partly-replaced', `${r.error.message}; already replaced: ${done.join(', ')}. The old files are in the backups folder.`);
+      }
       done.push(name);
     }
     return good(undefined);

@@ -29,7 +29,7 @@ let dir: string;
 let tick: number;
 const now = () => (tick += 1000);
 const noSleep = () => Promise.resolve();
-const storage = (over: Partial<FsOps> = {}, extra: { keepBackups?: number } = {}) =>
+const storage = (over: Partial<FsOps> = {}, extra: { keepBackups?: number; keepReplaceBackups?: number } = {}) =>
   createStorage(dir, { fs: { ...nodeFs, ...over }, now, sleep: noSleep, ...extra });
 const file = (name = 'toy') => join(dir, `${name}.json`);
 const backups = (name = 'toy') => (fs.existsSync(join(dir, 'backups')) ? fs.readdirSync(join(dir, 'backups')).filter((f) => f.startsWith(name)).sort() : []);
@@ -242,7 +242,7 @@ describe('backup and upgrade', () => {
   it('backup copies the current file into backups/ and leaves it where it is', async () => {
     put(2, { items: ['a'], count: 1 });
     await storage().backup(toyV2);
-    expect(backups()).toEqual([expect.stringMatching(/^toy\.v2-\d+\.json$/)]);
+    expect(backups()).toEqual([expect.stringMatching(/^toy\.before-replace-v2-\d+\.json$/)]);
     expect(onDisk().data.items).toEqual(['a']);
   });
 
@@ -251,11 +251,29 @@ describe('backup and upgrade', () => {
     expect(backups()).toEqual([]);
   });
 
-  it('backup keeps only the newest few', async () => {
+  it('backup keeps only the newest few of its own, and never touches the migration backups', async () => {
     put(2, { items: ['a'], count: 1 });
-    const s = storage({}, { keepBackups: 2 });
+    fs.mkdirSync(join(dir, 'backups'), { recursive: true });
+    fs.writeFileSync(join(dir, 'backups', 'toy.v1-000000000000001.json'), envelope(1, { items: [] }));
+    const s = storage({}, { keepBackups: 1, keepReplaceBackups: 2 });
     for (let i = 0; i < 4; i++) await s.backup(toyV2);
-    expect(backups()).toHaveLength(2);
+    expect(backups().filter((f) => f.includes('before-replace'))).toHaveLength(2);
+    expect(backups().filter((f) => /^toy\.v1-/.test(f))).toHaveLength(1);
+  });
+
+  it('backup of data that is just the empty starting state is skipped', async () => {
+    put(2, { items: [] });
+    await storage().backup(toyV2);
+    expect(backups()).toEqual([]);
+  });
+
+  it('a damaged file is never repaired from a restore backup: those are for people, not for recovery', async () => {
+    put(2, { items: ['before'], count: 1 });
+    const s = storage();
+    await s.backup(toyV2);
+    fs.writeFileSync(file(), '{"half');
+    const r = await s.read(toyV2);
+    expect(r).toMatchObject({ status: 'recovered', source: 'fallback' });
   });
 
   it('upgrade only validates data that is already current', () => {

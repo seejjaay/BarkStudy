@@ -84,7 +84,7 @@ export function HotkeyField({
     if (MODIFIER_KEYS.includes(e.key)) return; // wait for the key that goes with it
     const next = acceleratorFromKeyEvent(e.nativeEvent);
     if (next === null) {
-      setError('Hold Ctrl or Alt and press a letter, number or function key. Esc cancels.');
+      setError('Hold Ctrl and Alt together and press a letter, number or function key. Esc cancels.');
       return;
     }
     setListening(false);
@@ -117,7 +117,7 @@ export function HotkeyField({
         >
           {listening ? 'Press the new shortcut…' : acceleratorLabel(accelerator)}
         </button>
-        <span className="hint">{listening ? 'Esc cancels.' : 'Choose to change it.'}</span>
+        <span className="hint">{listening ? 'Esc cancels. If nothing happens, another app already uses that shortcut.' : 'Choose to change it.'}</span>
       </div>
       <p id={describedBy} className="hint">
         {hint}

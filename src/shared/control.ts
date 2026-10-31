@@ -29,7 +29,8 @@ export type ErrorCode =
   | 'newer-version'
   | 'hotkey-taken'
   | 'hotkey-invalid'
-  | 'session-running';
+  | 'session-running'
+  | 'partly-replaced';
 
 export interface AppError {
   code: ErrorCode;

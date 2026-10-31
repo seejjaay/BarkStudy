@@ -23,8 +23,9 @@ export const ERROR_TEXT: Record<ErrorCode, string> = {
   'not-a-backup': 'That is not a BarkStudy backup, or part of it is damaged. Nothing was changed.',
   'newer-version': 'That backup was made by a newer BarkStudy. Update the app to restore it. Nothing was changed.',
   'hotkey-taken': 'Another app is using that shortcut. Pick a different one.',
-  'hotkey-invalid': 'That shortcut cannot be used. It needs Ctrl or Alt plus a key, and the two shortcuts must differ.',
+  'hotkey-invalid': 'That shortcut cannot be used. It needs Ctrl and Alt together with a key, and the two shortcuts must differ.',
   'session-running': 'End the session first, then try again.',
+  'partly-replaced': 'Part of your data was replaced before a save failed, so what you see may be a mix. Your earlier files are in the backups folder.',
 };
 
 export const SKIP_TEXT: Record<SkipReason, string> = {

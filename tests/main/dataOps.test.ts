@@ -174,6 +174,18 @@ describe('data:import-all', () => {
   });
 });
 
+describe('re-applying settings after a failed restore or reset', () => {
+  it.each([
+    ['partly-replaced', ['after']],
+    ['write-failed', []],
+    ['not-a-backup', []],
+  ] as const)('a %s from the library re-applies the settings: %j', async (errorCode, expected) => {
+    vi.spyOn(lib, 'resetAll').mockResolvedValueOnce({ ok: false, error: { code: errorCode, message: 'x' } });
+    expect(codeOf(await call<Result<void>>('data:reset'))).toBe(errorCode);
+    expect(order).toEqual(expected);
+  });
+});
+
 describe('data:reset', () => {
   it('empties the library, puts onboarding back, and re-applies the settings', async () => {
     ok(await lib.createDeck('Gone'));

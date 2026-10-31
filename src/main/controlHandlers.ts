@@ -253,9 +253,9 @@ export function createControlHandlers(opts: ControlHandlerOptions): ControlHandl
     }
   }
 
-  /** After a wholesale replace the stored settings may differ from what is bound, so re-apply them. A refused replace changed nothing; a failed write may have replaced part. */
+  /** After a wholesale replace the stored settings may differ from what is bound, so re-apply them. A refused or wholly failed replace changed nothing; a partial one changed some. */
   function settled(r: Result<void>): Result<void> {
-    if (r.ok || r.error.code === 'write-failed') platform.afterReplace();
+    if (r.ok || r.error.code === 'partly-replaced') platform.afterReplace();
     return r;
   }
 

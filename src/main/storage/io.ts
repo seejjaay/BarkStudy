@@ -1,5 +1,6 @@
 import * as fsp from 'node:fs/promises';
 import { join } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 
 /**
  * One JSON file per store under the user-data folder, written atomically (temp file, flush, rename), versioned with a
@@ -76,6 +77,8 @@ export interface StorageOptions {
   sleep?: (ms: number) => Promise<void>;
   /** Pre-migration backups (and corrupt-file copies) kept per store. Default 5. */
   keepBackups?: number;
+  /** Backups taken before a restore or reset (`backup()`), kept apart from the ones above so they are not pushed out by them. Default 20. */
+  keepReplaceBackups?: number;
 }
 
 interface Envelope {
@@ -128,6 +131,7 @@ export function createStorage(dir: string, opts: StorageOptions = {}): Storage {
   const now = opts.now ?? (() => Date.now());
   const sleep = opts.sleep ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
   const keep = opts.keepBackups ?? 5;
+  const keepReplace = opts.keepReplaceBackups ?? 20;
   const backupDir = join(dir, 'backups');
   const chains = new Map<string, Promise<unknown>>();
   let tmpSeq = 0;
@@ -165,14 +169,17 @@ export function createStorage(dir: string, opts: StorageOptions = {}): Storage {
     }
   }
 
-  async function listBackups(name: string, kind: 'v' | 'corrupt'): Promise<{ file: string; at: number }[]> {
+  type BackupKind = 'v' | 'corrupt' | 'replace';
+
+  async function listBackups(name: string, kind: BackupKind): Promise<{ file: string; at: number }[]> {
     let names: string[];
     try {
       names = await fs.readdir(backupDir);
     } catch {
       return [];
     }
-    const re = kind === 'v' ? new RegExp(`^${name}\\.v\\d+-(\\d+)\\.json$`) : new RegExp(`^${name}\\.corrupt-(\\d+)\\.json$`);
+    const pattern = { v: `^${name}\\.v\\d+-(\\d+)\\.json$`, corrupt: `^${name}\\.corrupt-(\\d+)\\.json$`, replace: `^${name}\\.before-replace-v\\d+-(\\d+)\\.json$` }[kind];
+    const re = new RegExp(pattern);
     return names
       .map((file) => ({ file, m: re.exec(file) }))
       .filter((x): x is { file: string; m: RegExpExecArray } => x.m !== null)
@@ -180,8 +187,8 @@ export function createStorage(dir: string, opts: StorageOptions = {}): Storage {
       .sort((a, b) => b.at - a.at);
   }
 
-  async function prune(name: string, kind: 'v' | 'corrupt'): Promise<void> {
-    for (const old of (await listBackups(name, kind)).slice(keep)) await fs.unlink(join(backupDir, old.file)).catch(() => undefined);
+  async function prune(name: string, kind: BackupKind): Promise<void> {
+    for (const old of (await listBackups(name, kind)).slice(kind === 'replace' ? keepReplace : keep)) await fs.unlink(join(backupDir, old.file)).catch(() => undefined);
   }
 
   /** Copies `from` into backups/ under a name that sorts by time; never overwrites an existing backup. */
@@ -279,9 +286,12 @@ export function createStorage(dir: string, opts: StorageOptions = {}): Storage {
           throw e;
         });
         if (text === null) return;
-        const version = parseEnvelope(text)?.schemaVersion ?? def.migrations.length + 1;
-        await copyToBackups(fileOf(def.name), (at) => `${def.name}.v${version}-${stamp(at)}.json`);
-        await prune(def.name, 'v');
+        const env = parseEnvelope(text);
+        // Nothing to keep when the file only holds the empty starting state: it would spend a slot on nothing.
+        if (env && env.schemaVersion === def.migrations.length + 1 && isDeepStrictEqual(env.data, def.fallback())) return;
+        const version = env?.schemaVersion ?? def.migrations.length + 1;
+        await copyToBackups(fileOf(def.name), (at) => `${def.name}.before-replace-v${version}-${stamp(at)}.json`);
+        await prune(def.name, 'replace');
       }),
     write: (def, data) =>
       serial(def.name, async () => {
