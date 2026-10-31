@@ -156,8 +156,6 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
     },
     log,
   });
-  // Tests start with it off whatever this machine says, so a laptop on battery saver does not put the dog to sleep mid-test.
-  if (e2e) power.force(false);
   // Esc is held only while an effect runs; a press ends the effect and keeps the level.
   const escapeKey = createEscapeKey({ hotkeys, onPress: () => studySession.dispatch({ type: 'ESC_PRESSED' }), log });
 
@@ -376,6 +374,9 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
   displaysChanged();
   tracker.start();
   idle.start();
+  // Tests start with it off whatever this machine says, so a laptop on battery saver does not put the dog to sleep mid-test.
+  // Here, after the tray exists, since a change it reports goes through publishStatus().
+  if (e2e) power.force(false);
   power.start();
   // A start-with-Windows launch passes --hidden: the dog and the tray come up, the window waits to be opened.
   if (process.env['BARKSTUDY_NO_CONTROL'] !== '1' && !process.argv.includes('--hidden')) controlWindow.show();

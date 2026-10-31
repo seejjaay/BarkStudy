@@ -739,14 +739,41 @@ describe('dog host behaviours', () => {
     host.dispose();
   });
 
-  it('power saving: a hop, a Stay and following the cursor all run as usual, then he curls up again', () => {
-    const { host, advance } = behaviourHost({ cursor: () => ({ x: 0, y: 0 }) });
+  it('power saving: a wander hop does not wake him from his nap, with an idle or a wander mood', () => {
+    const { host, last, advance } = behaviourHost();
     host.setWorld([T], [D1]);
     host.setPowerSaving(true);
+    advance(SETTLE_MS + 100);
+    const x = host.body().x;
+    for (const mood of ['idle', 'wander']) {
+      host.setMood(mood);
+      host.perform({ type: 'WALK_TO', windowId: 7 });
+      expect(host.behaviour).toBe('curl');
+      for (let i = 0; i < 3000 / TICK_MS; i++) advance(TICK_MS);
+      expect(host.body().x).toBe(x);
+      expect(last(1)?.pose).toBe('curl');
+    }
+    host.dispose();
+  });
+
+  it('power saving: a WALK_TO that comes with another mood (a card waiting) still hops, then he curls up', () => {
+    const { host, last, advance } = behaviourHost();
+    host.setWorld([T], [D1]);
+    host.setPowerSaving(true);
+    host.setMood('curious');
     host.perform({ type: 'WALK_TO', windowId: 7 });
     expect(host.behaviour).toBe('hop');
     advance(HOP_MS + 100);
     expect(host.behaviour).toBe('curl');
+    expect(host.body().anchor?.windowId).toBe(7);
+    expect(last(1)?.pose).toBe('curl');
+    host.dispose();
+  });
+
+  it('power saving: a Stay and following the cursor run as usual, then he curls up again', () => {
+    const { host } = behaviourHost({ cursor: () => ({ x: 0, y: 0 }) });
+    host.setWorld([T], [D1]);
+    host.setPowerSaving(true);
     host.setStay(true);
     expect(host.behaviour).toBe('sit-stay');
     host.setStay(false);

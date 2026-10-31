@@ -577,6 +577,8 @@ export function createDogHost(opts: DogHostOptions): DogHost {
             break;
           // An effect runs until END_EFFECT, its limit or a Stay, and a Stay until it is lifted: a hop or a curl cuts neither short.
           case 'WALK_TO':
+            // On battery saver a wander is not worth getting up for; a hop with a reason (a card waiting) still runs.
+            if (powerSaving && (mood === 'idle' || mood === 'wander')) break;
             if (!effect && behaviour !== 'sit-stay') startHop(action.windowId);
             break;
           case 'CURL_UP':
