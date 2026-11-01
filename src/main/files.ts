@@ -6,23 +6,26 @@ import { MAX_BACKUP_CHARS, MAX_IMPORT_CHARS, type FileAccess } from './controlHa
 
 /**
  * The native open and save dialogs, parented to the control window so they cannot hide behind it.
- * `overridePath` is for the e2e tests only: it hands back (and clears) a path to use for a backup instead of showing a dialog.
+ * `overridePath` is for the e2e tests only: it hands back (and clears) a path to use for a backup, a deck import or a deck export instead of showing a dialog.
  */
 export function createFileAccess(parent: () => BrowserWindow | null, overridePath?: () => string | null): FileAccess {
   return {
     async pickImport(): Promise<Result<{ name: string; text: string } | null>> {
-      const win = parent();
-      const options = {
-        title: 'Import cards',
-        properties: ['openFile' as const],
-        filters: [
-          { name: 'Cards (CSV, TSV, text)', extensions: ['csv', 'tsv', 'txt'] },
-          { name: 'All files', extensions: ['*'] },
-        ],
-      };
-      const chosen = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
-      const path = chosen.filePaths[0];
-      if (chosen.canceled || path === undefined) return { ok: true, value: null };
+      let path = overridePath?.() ?? undefined;
+      if (path === undefined) {
+        const win = parent();
+        const options = {
+          title: 'Import cards',
+          properties: ['openFile' as const],
+          filters: [
+            { name: 'Cards (CSV, TSV, text)', extensions: ['csv', 'tsv', 'txt'] },
+            { name: 'All files', extensions: ['*'] },
+          ],
+        };
+        const chosen = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+        path = chosen.filePaths[0];
+        if (chosen.canceled || path === undefined) return { ok: true, value: null };
+      }
       try {
         if ((await stat(path)).size > MAX_IMPORT_CHARS * 4) return { ok: false, error: { code: 'file-too-large', message: 'that file is too large to import' } };
         const text = await readFile(path, 'utf8');
@@ -34,12 +37,16 @@ export function createFileAccess(parent: () => BrowserWindow | null, overridePat
     },
 
     async saveExport(suggestedName, csv) {
-      const win = parent();
-      const options = { title: 'Export deck', defaultPath: suggestedName, filters: [{ name: 'CSV', extensions: ['csv'] }] };
-      const chosen = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
-      if (chosen.canceled || !chosen.filePath) return null;
-      await writeFile(chosen.filePath, csv, 'utf8');
-      return { path: chosen.filePath };
+      let path = overridePath?.() ?? undefined;
+      if (path === undefined) {
+        const win = parent();
+        const options = { title: 'Export deck', defaultPath: suggestedName, filters: [{ name: 'CSV', extensions: ['csv'] }] };
+        const chosen = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+        if (chosen.canceled || !chosen.filePath) return null;
+        path = chosen.filePath;
+      }
+      await writeFile(path, csv, 'utf8');
+      return { path };
     },
 
     async pickBackup(): Promise<Result<{ path: string; text: string } | null>> {
