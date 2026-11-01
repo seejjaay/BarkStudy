@@ -49,3 +49,17 @@ export const MOTION_OPTIONS: readonly Option<ReducedMotionSetting>[] = [
   { value: 'on', ...T.motions.on },
   { value: 'off', ...T.motions.off },
 ];
+
+/**
+ * Remembers the last value that was saved, so blur, Enter and key-up can all ask "is this worth saving?" without
+ * saving the same value twice. Call `committed` once a save goes through, and again when the saved value changes underneath.
+ */
+export function createCommitGuard<T>(initial: T): { shouldCommit(next: T): boolean; committed(value: T): void } {
+  let last = initial;
+  return {
+    shouldCommit: (next) => next !== last,
+    committed: (value) => {
+      last = value;
+    },
+  };
+}

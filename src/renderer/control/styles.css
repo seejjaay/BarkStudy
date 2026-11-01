@@ -7,11 +7,11 @@
   --ink: #3b2a1a;
   --ink-soft: #6f5a45;
   --line: #e4d6c1;
-  --ok: #3f7a4a;
+  --ok: #2f6b3a;
   --warn-bg: #fdf0cf;
   --warn-line: #d9a93a;
   --error-bg: #fbe4de;
-  --error-line: #c4533a;
+  --error-line: #a8402a;
   --focus: #1f5fbf;
   --radius: 10px;
   color-scheme: light;
@@ -29,7 +29,7 @@
     --warn-bg: #3b3115;
     --warn-line: #a8832a;
     --error-bg: #442019;
-    --error-line: #d1664d;
+    --error-line: #e0765d;
     --focus: #7db0ff;
     color-scheme: dark;
   }
@@ -165,7 +165,7 @@ th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: 
 /* Toasts */
 .toasts { position: fixed; right: 20px; bottom: 20px; display: grid; gap: 8px; z-index: 30; max-width: min(440px, calc(100% - 40px)); }
 .toast { background: var(--ink); color: var(--crumb); border-radius: 10px; padding: 10px 12px; display: flex; gap: 10px; align-items: center; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); }
-.toast-error { background: var(--error-line); color: #fff; }
+.toast-error { background: #a8402a; color: #fff; }
 .toast-mark { font-weight: 800; }
 .toast-text { flex: 1; overflow-wrap: anywhere; }
 .toast .btn-quiet { color: inherit; text-decoration: underline; padding: 2px 8px; }

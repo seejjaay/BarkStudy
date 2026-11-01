@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { LinkId } from '../../shared/control';
 import { ABOUT as T } from '../../shared/i18n/en';
 import { api, attempt, describe } from './api';
@@ -11,9 +11,10 @@ const LINKS: { id: LinkId; label: string }[] = [
   { id: 'license', label: T.links.license },
 ];
 
-export function AboutPage({ version, onRunSetup }: { version: string; onRunSetup: () => void }) {
+export function AboutPage({ version, sessionRunning, onRunSetup }: { version: string; sessionRunning: boolean; onRunSetup: () => void }) {
   const toast = useToast();
   const [diagnosing, setDiagnosing] = useState(false);
+  const setupNote = useId();
 
   async function open(id: LinkId): Promise<void> {
     const r = await attempt(api.call('link:open', { id }));
@@ -55,10 +56,23 @@ export function AboutPage({ version, onRunSetup }: { version: string; onRunSetup
         <h2>{T.setupTitle}</h2>
         <p className="hint">{T.setupHint}</p>
         <div className="actions">
-          <button type="button" className="btn" onClick={onRunSetup}>
+          <button
+            type="button"
+            className="btn"
+            aria-disabled={sessionRunning || undefined}
+            aria-describedby={sessionRunning ? setupNote : undefined}
+            onClick={() => {
+              if (!sessionRunning) onRunSetup();
+            }}
+          >
             {T.setupAgain}
           </button>
         </div>
+        {sessionRunning && (
+          <p id={setupNote} className="hint">
+            {T.setupWhileRunning}
+          </p>
+        )}
       </div>
       {diagnosing && <DiagnosticsDialog onClose={() => setDiagnosing(false)} />}
     </section>

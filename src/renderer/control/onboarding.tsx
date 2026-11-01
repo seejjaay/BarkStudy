@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { Cap } from '../../engine/types';
 import { acceleratorLabel } from '../../shared/accelerator';
 import type { LibrarySnapshot, SettingsView } from '../../shared/control';
@@ -26,15 +26,20 @@ interface Props {
 export function Onboarding(props: Props) {
   const [view, setView] = useState<SettingsView | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
+  const load = useCallback(() => {
+    setError(null);
     api.call('settings:get', undefined).then(setView, (e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
+  useEffect(load, [load]);
   if (error !== null) {
     return (
       <div className="onboarding">
         <div className="empty" role="alert">
           <h1>{T.loadFailed}</h1>
           <p className="muted">{error}</p>
+          <button type="button" className="btn btn-primary" onClick={load}>
+            {T.tryAgain}
+          </button>
         </div>
       </div>
     );

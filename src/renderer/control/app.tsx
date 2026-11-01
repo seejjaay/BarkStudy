@@ -4,6 +4,7 @@ import { COMMON as C } from '../../shared/i18n/en';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import { api } from './api';
 import { DecksView } from './decks';
+import { focusPageHeading } from './focus';
 import { AboutPage } from './about';
 import { HistoryView } from './history';
 import { Onboarding } from './onboarding';
@@ -92,9 +93,41 @@ function Shell() {
     document.title = C.pageTitle(C.nav[view]);
   }, [view]);
 
+  // A view switch lands on the new page's heading, so keyboard and screen-reader users know where they are. Not on first load.
+  const firstView = useRef(true);
+  useEffect(() => {
+    if (firstView.current) {
+      firstView.current = false;
+      return;
+    }
+    const main = document.getElementById('main');
+    return main ? focusPageHeading(main) : undefined;
+  }, [view]);
+
   const snapshot = load.status === 'ready' ? load.snapshot : null;
   if (setupAgain || shouldOnboard(load, snapshot)) {
-    return snapshot ? (
+    if (!snapshot) {
+      // Setup was reopened but the data is not there (a refresh failed): say so, rather than showing a blank window.
+      return load.status === 'error' ? (
+        <div className="onboarding">
+          <div className="empty" role="alert">
+            <h1>{C.loadFailed}</h1>
+            <p className="muted">{load.message}</p>
+            <div className="actions">
+              <button type="button" className="btn btn-primary" onClick={() => void refresh()}>
+                {C.tryAgain}
+              </button>
+              {setupAgain && (
+                <button type="button" className="btn" onClick={() => setSetupAgain(false)}>
+                  {C.cancel}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null;
+    }
+    return (
       <Onboarding
         snapshot={snapshot}
         leaveIt={leaveIt}
@@ -108,7 +141,7 @@ function Shell() {
         }}
         onCancel={() => setSetupAgain(false)}
       />
-    ) : null;
+    );
   }
 
   const notices = load.status === 'ready' ? load.snapshot.notices.filter((n) => !dismissed.has(`${n.store}:${n.kind}`)) : [];
@@ -220,7 +253,7 @@ function Shell() {
         )}
         {load.status === 'ready' && view === 'history' && <HistoryView snapshot={load.snapshot} />}
         {load.status === 'ready' && view === 'settings' && <SettingsPage reloadKey={statusTick} onDataChanged={() => void refresh()} />}
-        {load.status === 'ready' && view === 'about' && <AboutPage version={load.snapshot.version} onRunSetup={() => setSetupAgain(true)} />}
+        {load.status === 'ready' && view === 'about' && <AboutPage version={load.snapshot.version} sessionRunning={session.phase === 'running'} onRunSetup={() => setSetupAgain(true)} />}
       </main>
     </div>
   );

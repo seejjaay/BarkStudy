@@ -47,7 +47,7 @@ export const SETTINGS = {
   excludedLegend: 'Apps Pandesal leaves alone',
   excludedNote: 'He stays quiet while one of these is in front. Fullscreen windows, such as games, are always left alone.',
   noApps: 'No apps listed.',
-  stopLeaving: (app: string) => `Stop leaving ${app} alone`,
+  stopLeaving: (app: string) => `Remove ${app}: stop leaving it alone`,
   remove: 'Remove',
   addOpenLabel: 'Add an app that is open now',
   addOpenOption: 'Add an app that is open now…',

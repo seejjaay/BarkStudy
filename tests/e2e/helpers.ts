@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import { join } from 'node:path';
+import AxeBuilder from '@axe-core/playwright';
 import { _electron as electron, expect, type ElectronApplication, type Page } from '@playwright/test';
 import { DEFAULT_SETTINGS } from '../../src/shared/settings';
 
@@ -49,4 +50,22 @@ export async function waitForDebug(app: ElectronApplication): Promise<void> {
 /** Calls an operation the control window would, from inside its page. */
 export function control<T>(page: Page, op: string, args?: unknown): Promise<T> {
   return page.evaluate(([o, a]) => (window as unknown as { barkControl: { call: (op: string, args: unknown) => Promise<unknown> } }).barkControl.call(o as string, a), [op, args]) as Promise<T>;
+}
+
+/**
+ * Scans a page with axe against WCAG 2.0/2.1 A and AA and fails with every violation's id, help text and target.
+ * A rule may be switched off only with a written reason, kept next to the call that switches it off.
+ */
+export async function expectNoAxeViolations(page: Page, context: string, disabled: Record<string, string> = {}): Promise<void> {
+  for (const [rule, reason] of Object.entries(disabled)) {
+    if (reason.trim() === '') throw new Error(`axe rule ${rule} is disabled for "${context}" without a reason`);
+  }
+  // Legacy mode runs axe inside the page: the default opens a blank page, which Electron refuses (Target.createTarget). Our UI has no iframes, so nothing is lost.
+  const results = await new AxeBuilder({ page })
+    .setLegacyMode(true)
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .disableRules(Object.keys(disabled))
+    .analyze();
+  const lines = results.violations.flatMap((v) => v.nodes.map((n) => `  ${v.id}: ${v.help} -> ${n.target.join(' ')}`));
+  expect(lines, `axe violations on ${context}:\n${lines.join('\n')}`).toEqual([]);
 }

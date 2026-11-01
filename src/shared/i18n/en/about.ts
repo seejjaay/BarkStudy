@@ -10,6 +10,7 @@ export const ABOUT = {
   setupTitle: 'Setup',
   setupHint: 'Walk through the first-run screens again: personality, the way to stop him, privacy and the starter deck.',
   setupAgain: 'Run setup again',
+  setupWhileRunning: 'Finish or end the running session first.',
   problemTitle: 'Something wrong?',
   problemHint: 'Copy the diagnostics, then report the bug on GitHub and paste them into the report. You get to read them before anything is copied.',
   copyDiagnostics: 'Copy diagnostics…',

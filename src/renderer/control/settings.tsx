@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { Cap } from '../../engine/types';
 import { acceleratorLabel } from '../../shared/accelerator';
 import type { Result, SettingsPatch, SettingsView } from '../../shared/control';
@@ -7,7 +7,7 @@ import { DEFAULT_EXCLUDED_APPS, type Settings } from '../../shared/settings';
 import { api, attempt, describe } from './api';
 import { DataSection } from './dataSection';
 import { HotkeyField, RadioCards } from './formParts';
-import { CAP_OPTIONS, MOTION_OPTIONS, PRESET_OPTIONS, addExcluded, parseInterval, volumePercent } from './settingsModel';
+import { CAP_OPTIONS, MOTION_OPTIONS, PRESET_OPTIONS, addExcluded, createCommitGuard, parseInterval, volumePercent } from './settingsModel';
 import { useToast } from './toast';
 
 type Save = (patch: SettingsPatch, message?: string) => Promise<boolean>;
@@ -163,7 +163,9 @@ function IntervalFields({ min, max, save }: { min: number; max: number; save: Sa
   const [hi, setHi] = useState(String(max));
   const [error, setError] = useState<string | null>(null);
   const ids = { lo: useId(), hi: useId(), err: useId() };
+  const guard = useRef(createCommitGuard(`${min}-${max}`));
   useEffect(() => {
+    guard.current.committed(`${min}-${max}`);
     setLo(String(min));
     setHi(String(max));
   }, [min, max]);
@@ -175,8 +177,11 @@ function IntervalFields({ min, max, save }: { min: number; max: number; save: Sa
       return;
     }
     setError(null);
-    if (parsed.min === min && parsed.max === max) return;
-    if (!(await save({ checkinMinMinutes: parsed.min, checkinMaxMinutes: parsed.max }, T.appliesNextSession))) {
+    const key = `${parsed.min}-${parsed.max}`;
+    if (!guard.current.shouldCommit(key)) return;
+    if (await save({ checkinMinMinutes: parsed.min, checkinMaxMinutes: parsed.max }, T.appliesNextSession)) {
+      guard.current.committed(key);
+    } else {
       setLo(String(min));
       setHi(String(max));
     }
@@ -220,9 +225,16 @@ function IntervalFields({ min, max, save }: { min: number; max: number; save: Sa
 function VolumeSlider({ volume, disabled, save }: { volume: number; disabled: boolean; save: Save }) {
   const [value, setValue] = useState(volume);
   const id = useId();
-  useEffect(() => setValue(volume), [volume]);
+  const guard = useRef(createCommitGuard(volume));
+  useEffect(() => {
+    guard.current.committed(volume);
+    setValue(volume);
+  }, [volume]);
   const commit = (): void => {
-    if (value !== volume) void save({ volume: value });
+    if (!guard.current.shouldCommit(value)) return;
+    void save({ volume: value }).then((saved) => {
+      if (saved) guard.current.committed(value);
+    });
   };
   return (
     <div className="field">

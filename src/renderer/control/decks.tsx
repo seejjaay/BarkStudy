@@ -1,4 +1,5 @@
 import { useId, useRef, useState, type FormEvent } from 'react';
+import { useFocusAfterRemove } from './focus';
 import type { DeckSummary, LibrarySnapshot } from '../../shared/control';
 import { COMMON as C, DECKS as T } from '../../shared/i18n/en';
 import { api, attempt } from './api';
@@ -29,6 +30,7 @@ export function DecksView({
   const [importing, setImporting] = useState<{ deckId: string | null } | null>(null);
   const [openDeckId, setOpenDeckId] = useState<string | null>(null);
   const newButton = useRef<HTMLButtonElement>(null);
+  const { listRef, removed } = useFocusAfterRemove(decks, () => document.getElementById('decks-title'));
   const createId = useId();
   const renameId = useId();
 
@@ -67,6 +69,7 @@ export function DecksView({
       toast(errorText(r.error), { kind: 'error' });
       return;
     }
+    removed(decks.findIndex((d) => d.id === deck.id));
     await refresh();
     const token = r.value;
     toast(T.deleted(deck.name, C.cards(deck.cardCount)), {
@@ -121,7 +124,7 @@ export function DecksView({
   return (
     <section aria-labelledby="decks-title">
       <header className="page-head">
-        <h1 id="decks-title">{T.title}</h1>
+        <h1 id="decks-title" tabIndex={-1}>{T.title}</h1>
         <div className="actions">
           <button type="button" className="btn" onClick={() => setImporting({ deckId: null })}>
             {T.importCards}
@@ -183,7 +186,7 @@ export function DecksView({
           </div>
         </div>
       ) : (
-        <ul className="rows">
+        <ul className="rows" ref={listRef}>
           {decks.map((d) => {
             const inUse = d.id === runningDeckId;
             return (

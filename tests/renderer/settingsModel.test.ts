@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TRAIT_PRESETS } from '../../src/engine/tuning';
-import { CAP_OPTIONS, MOTION_OPTIONS, PRESET_OPTIONS, addExcluded, parseInterval, volumePercent } from '../../src/renderer/control/settingsModel';
+import { CAP_OPTIONS, MOTION_OPTIONS, PRESET_OPTIONS, addExcluded, createCommitGuard, parseInterval, volumePercent } from '../../src/renderer/control/settingsModel';
 import { DEFAULT_SETTINGS } from '../../src/shared/settings';
 
 describe('parseInterval', () => {
@@ -67,5 +67,22 @@ describe('volumePercent', () => {
     expect(volumePercent(0.65)).toBe('65%');
     expect(volumePercent(1)).toBe('100%');
     expect(volumePercent(0)).toBe('0%');
+  });
+});
+
+describe('createCommitGuard', () => {
+  it('refuses a value equal to the last committed one and accepts a changed one', () => {
+    const guard = createCommitGuard(0.5);
+    expect(guard.shouldCommit(0.5)).toBe(false);
+    expect(guard.shouldCommit(0.7)).toBe(true);
+  });
+
+  it('keeps asking until a value is recorded as committed', () => {
+    const guard = createCommitGuard('5-15');
+    expect(guard.shouldCommit('5-20')).toBe(true);
+    expect(guard.shouldCommit('5-20')).toBe(true); // the save has not gone through yet
+    guard.committed('5-20');
+    expect(guard.shouldCommit('5-20')).toBe(false);
+    expect(guard.shouldCommit('5-15')).toBe(true);
   });
 });

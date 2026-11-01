@@ -74,7 +74,7 @@ export function HotkeyField({
   const describedBy = useId();
 
   function onKeyDown(e: KeyboardEvent<HTMLButtonElement>): void {
-    if (!listening || e.key === 'Tab') return;
+    if (busy || !listening || e.key === 'Tab') return;
     e.preventDefault();
     e.stopPropagation();
     if (e.key === 'Escape') {
@@ -108,8 +108,9 @@ export function HotkeyField({
           className="btn"
           aria-label={listening ? SETTINGS.hotkey.listeningLabel(label) : SETTINGS.hotkey.idleLabel(label, acceleratorLabel(accelerator))}
           aria-describedby={describedBy}
-          disabled={busy}
+          aria-disabled={busy || undefined}
           onClick={() => {
+            if (busy) return;
             setListening(true);
             setError(null);
           }}

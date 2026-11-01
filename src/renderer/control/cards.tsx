@@ -3,6 +3,7 @@ import { MAX_CARD_TEXT, type DeckSummary, type ViewCard } from '../../shared/con
 import { COMMON as C, DECKS } from '../../shared/i18n/en';
 import { api, attempt } from './api';
 import { PAGE_SIZE, filterCards } from './cardFilter';
+import { useFocusAfterRemove } from './focus';
 import { errorText } from './text';
 import { useToast } from './toast';
 
@@ -44,6 +45,7 @@ export function CardsView({
   const [editError, setEditError] = useState<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const frontField = useRef<HTMLTextAreaElement>(null);
+  const { listRef, removed } = useFocusAfterRemove(load, () => heading.current);
 
   const reload = useCallback(async () => {
     const r = await attempt(api.call('card:list', { deckId: deck.id }));
@@ -92,6 +94,7 @@ export function CardsView({
       toast(errorText(r.error), { kind: 'error' });
       return;
     }
+    removed(matches.findIndex((c) => c.id === card.id));
     await refresh();
     const undo = r.value;
     toast(T.deleted(card.front), {
@@ -226,7 +229,7 @@ export function CardsView({
               <p className="muted" role="status">
                 {query.trim() === '' ? T.showing(Math.min(shown, matches.length), C.cards(matches.length)) : T.matching(C.cards(matches.length))}
               </p>
-              <ul className="rows">
+              <ul className="rows" ref={listRef}>
                 {matches.slice(0, shown).map((c) => (
                   <li key={c.id} className="row card-row">
                     {editing?.id === c.id ? (

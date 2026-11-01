@@ -1,6 +1,7 @@
 /** First-run onboarding. The dog is male: he/him. */
 export const ONBOARDING = {
   loadFailed: "Couldn't start setup",
+  tryAgain: 'Try again',
   loading: 'Loading…',
   stepOf: (n: number, total: number) => `Step ${n} of ${total}`,
   title: {
