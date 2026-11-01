@@ -42,6 +42,12 @@ Most checks are **automated self-tests** using synthetic input (`mouse_event`, `
 - Overlay hit-testing relies on `mousemove` forwarding, which only fires on real mouse movement; always nudge the mouse in tests.
 - Enumerate with `EnumWindows` for z-order (top first); no need for `GetWindow(GW_HWNDNEXT)`.
 
+## M5b: Windows text size
+
+Checked 2026-11-01 by CJ: with *Settings → Accessibility → Text size* raised from 100 % to 150 %, the control window's Study text grew.
+
+Ruling: no fallback. The `TextScaleFactor` registry read, `zoomFor` and the extra Win32 allowance in the Global Constraints are not built. Case 28 of `docs/test-matrix.md` covers text size from here on.
+
 ## Still open (needs a human or other hardware)
 
 - [ ] **100% and 150% scaling:** now cases 1 to 16 of `docs/test-matrix.md`, run against the real app.
