@@ -231,7 +231,14 @@ export function createEngineHost(opts: EngineHostOptions): EngineHost {
   function apply(e: Event): void {
     const hadCard = state.rules.card;
     const trace: TraceEntry[] | undefined = e.type === 'TICK' ? [] : undefined;
-    const r = step(state, e, ctx, trace);
+    let r: ReturnType<typeof step>;
+    try {
+      r = step(state, e, ctx, trace);
+    } catch (err) {
+      // The event that crashed the engine is the one a replay most needs, so it is logged before the error goes on.
+      record(e, false);
+      throw err;
+    }
     // A whole positive tick that fired nothing; merged runs of these split back evenly without changing anything.
     record(e, e.type === 'TICK' && trace?.length === 0 && Number.isInteger(e.dtMs) && e.dtMs > 0);
     state = r.state;

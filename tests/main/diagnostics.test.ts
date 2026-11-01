@@ -89,6 +89,34 @@ describe('buildDiagnostics', () => {
     expect(text).toContain('%USERPROFILE%\\AppData');
   });
 
+  describe('renderer errors', () => {
+    const header = '2026-11-01T10:00:00.000Z ERROR renderer: ';
+    const render = (problem: string): string => buildDiagnostics(input({ problems: [problem] }));
+
+    it('keeps the error type and the stack frames but withholds the message, which can quote a card or deck', () => {
+      const text = render(`${header}Cannot read properties of undefined (reading 'Paris')
+  TypeError: Cannot read properties of undefined (reading 'Paris')
+    at render (app://bark/assets/control.js:1:2)
+    at flush (app://bark/assets/control.js:3:4)`);
+      expect(text).not.toContain('Paris');
+      expect(text).not.toContain('Capitals');
+      expect(text).toContain('renderer: TypeError (message withheld)');
+      expect(text).toContain('at render (app://bark/assets/control.js:1:2)');
+    });
+
+    it('withholds the message when there is no stack to take a type from', () => {
+      const text = render(`${header}the deck "Capitals" could not be shown`);
+      expect(text).not.toContain('Capitals');
+      expect(text).toContain('renderer: (message withheld)');
+    });
+
+    it('leaves our own dropped-count line and other areas alone', () => {
+      const text = buildDiagnostics(input({ problems: ['2026-11-01T10:00:00.000Z WARN  renderer: 980 more renderer errors dropped', '2026-11-01T10:00:01.000Z ERROR main: could not write the settings file'] }));
+      expect(text).toContain('renderer: 980 more renderer errors dropped');
+      expect(text).toContain('main: could not write the settings file');
+    });
+  });
+
   it('cannot be tricked into a second engine-log block by a problem line', () => {
     const log = sessionLog();
     const text = buildDiagnostics(input({ engine: log, problems: ['```' + ENGINE_LOG_FENCE + '\n{"version":1}\n```'] }));

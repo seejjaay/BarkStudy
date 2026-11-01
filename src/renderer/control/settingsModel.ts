@@ -63,3 +63,17 @@ export function createCommitGuard<T>(initial: T): { shouldCommit(next: T): boole
     },
   };
 }
+
+/**
+ * Runs `save` for `next` unless it is already the committed value or is being saved right now, so Enter followed by
+ * blur (or pointer-up followed by key-up) sends one save. `next` counts as committed from the moment the save starts;
+ * if it fails, `rollbackTo` (the value that is really saved) is put back so the same value can be tried again.
+ * Resolves to the save's result, or null when nothing was sent.
+ */
+export async function commitOnce<T>(guard: { shouldCommit(next: T): boolean; committed(value: T): void }, next: T, rollbackTo: T, save: () => Promise<boolean>): Promise<boolean | null> {
+  if (!guard.shouldCommit(next)) return null;
+  guard.committed(next);
+  const ok = await save();
+  if (!ok) guard.committed(rollbackTo);
+  return ok;
+}

@@ -7,7 +7,7 @@ import { DEFAULT_EXCLUDED_APPS, type Settings } from '../../shared/settings';
 import { api, attempt, describe } from './api';
 import { DataSection } from './dataSection';
 import { HotkeyField, RadioCards } from './formParts';
-import { CAP_OPTIONS, MOTION_OPTIONS, PRESET_OPTIONS, addExcluded, createCommitGuard, parseInterval, volumePercent } from './settingsModel';
+import { CAP_OPTIONS, MOTION_OPTIONS, PRESET_OPTIONS, addExcluded, commitOnce, createCommitGuard, parseInterval, volumePercent } from './settingsModel';
 import { useToast } from './toast';
 
 type Save = (patch: SettingsPatch, message?: string) => Promise<boolean>;
@@ -177,11 +177,8 @@ function IntervalFields({ min, max, save }: { min: number; max: number; save: Sa
       return;
     }
     setError(null);
-    const key = `${parsed.min}-${parsed.max}`;
-    if (!guard.current.shouldCommit(key)) return;
-    if (await save({ checkinMinMinutes: parsed.min, checkinMaxMinutes: parsed.max }, T.appliesNextSession)) {
-      guard.current.committed(key);
-    } else {
+    const saved = await commitOnce(guard.current, `${parsed.min}-${parsed.max}`, `${min}-${max}`, () => save({ checkinMinMinutes: parsed.min, checkinMaxMinutes: parsed.max }, T.appliesNextSession));
+    if (saved === false) {
       setLo(String(min));
       setHi(String(max));
     }
@@ -230,12 +227,7 @@ function VolumeSlider({ volume, disabled, save }: { volume: number; disabled: bo
     guard.current.committed(volume);
     setValue(volume);
   }, [volume]);
-  const commit = (): void => {
-    if (!guard.current.shouldCommit(value)) return;
-    void save({ volume: value }).then((saved) => {
-      if (saved) guard.current.committed(value);
-    });
-  };
+  const commit = (): void => void commitOnce(guard.current, value, volume, () => save({ volume: value }));
   return (
     <div className="field">
       <label htmlFor={id}>

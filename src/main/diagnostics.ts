@@ -112,10 +112,26 @@ function largestFit(total: number, fits: (n: number) => boolean): number {
   return lo;
 }
 
+const RENDERER_HEAD = /^(\S+ +(?:ERROR|WARN) +renderer: )(.*)$/;
+const DROPPED_LINE = /^\d+ more renderer errors dropped$/;
+
+/**
+ * A page's error message is free text and can quote a card, a deck name or a topic, which the bundle promises never to hold.
+ * So of a renderer error only its type and the stack frames (our own code locations) are kept; the local log keeps the full message.
+ */
+function withholdRendererMessage(problem: string): string {
+  const [first = '', ...rest] = problem.split('\n');
+  const m = RENDERER_HEAD.exec(first);
+  if (!m || DROPPED_LINE.test(m[2] ?? '')) return problem;
+  const type = rest.map((l) => /^\s*([A-Za-z]\w*(?:Error|Exception)):/.exec(l)?.[1]).find((t) => t !== undefined);
+  const frames = rest.filter((l) => /^\s+at\s/.test(l));
+  return [`${m[1]}${type ? `${type} ` : ''}(message withheld)`, ...frames].join('\n');
+}
+
 export function buildDiagnostics(input: DiagnosticsInput, maxChars = MAX_DIAGNOSTICS_CHARS): string {
   const head = summary(input);
   // A fence in a message must not open a second engine-log block.
-  const problems = input.problems.map((p) => scrub(p, input.home, input.user).replace(/`{3,}/g, "'''").slice(0, MAX_PROBLEM_CHARS));
+  const problems = input.problems.map((p) => scrub(withholdRendererMessage(p), input.home, input.user).replace(/`{3,}/g, "'''").slice(0, MAX_PROBLEM_CHARS));
   const total = problems.length;
   const build = (keep: number, engine: EngineLog | null): string => head + problemsSection(problems.slice(total - keep), total - keep) + engineSection(engine);
 

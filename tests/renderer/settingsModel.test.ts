@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { TRAIT_PRESETS } from '../../src/engine/tuning';
-import { CAP_OPTIONS, MOTION_OPTIONS, PRESET_OPTIONS, addExcluded, createCommitGuard, parseInterval, volumePercent } from '../../src/renderer/control/settingsModel';
+import { CAP_OPTIONS, MOTION_OPTIONS, PRESET_OPTIONS, addExcluded, commitOnce, createCommitGuard, parseInterval, volumePercent } from '../../src/renderer/control/settingsModel';
 import { DEFAULT_SETTINGS } from '../../src/shared/settings';
 
 describe('parseInterval', () => {
@@ -84,5 +84,43 @@ describe('createCommitGuard', () => {
     guard.committed('5-20');
     expect(guard.shouldCommit('5-20')).toBe(false);
     expect(guard.shouldCommit('5-15')).toBe(true);
+  });
+});
+
+describe('commitOnce', () => {
+  /** A save the test finishes by hand, so a second trigger can arrive while the first is still going. */
+  const slowSave = () => {
+    const calls: ((ok: boolean) => void)[] = [];
+    const save = vi.fn(() => new Promise<boolean>((resolve) => calls.push(resolve)));
+    return { save, finish: (ok: boolean) => calls.shift()!(ok) };
+  };
+
+  it('sends one save when Enter and then blur both ask before the first comes back', async () => {
+    const guard = createCommitGuard('5-15');
+    const { save, finish } = slowSave();
+    const first = commitOnce(guard, '5-20', '5-15', save);
+    const second = commitOnce(guard, '5-20', '5-15', save);
+    finish(true);
+    expect(await first).toBe(true);
+    expect(await second).toBeNull();
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets the same value be sent again after a save fails', async () => {
+    const guard = createCommitGuard('5-15');
+    const { save, finish } = slowSave();
+    const first = commitOnce(guard, '5-20', '5-15', save);
+    finish(false);
+    expect(await first).toBe(false);
+    const retry = commitOnce(guard, '5-20', '5-15', save);
+    finish(true);
+    expect(await retry).toBe(true);
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not save a value that is already the committed one', async () => {
+    const save = vi.fn(() => Promise.resolve(true));
+    expect(await commitOnce(createCommitGuard(0.5), 0.5, 0.5, save)).toBeNull();
+    expect(save).not.toHaveBeenCalled();
   });
 });
