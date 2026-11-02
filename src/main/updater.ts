@@ -110,12 +110,14 @@ export function createUpdater(opts: UpdaterOptions): Updater {
     if (state === 'off' || state === 'unavailable') return;
     switch (event.type) {
       case 'available':
+        opts.log.info('updater', `update ${event.version} found, downloading`);
         set('downloading', event.version);
         return;
       case 'none':
         set('idle');
         return;
       case 'downloaded':
+        opts.log.info('updater', `update ${event.version} downloaded`);
         set('ready', event.version);
         if (!announced.has(event.version)) {
           announced.add(event.version);

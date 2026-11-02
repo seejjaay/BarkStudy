@@ -23,7 +23,7 @@ Most checks are **automated self-tests** using synthetic input (`mouse_event`, `
 | S5 | NSIS installer builds unsigned (electron-builder 26) | **Pass** | 122 MB installer |
 | S5 | Silent per-user install, packaged app runs, koffi + WinEvent hooks work inside the asar build | **Pass** | `koffi` unpacked to `app.asar.unpacked`; packaged smoke test 3/3 |
 | S5 | Uninstall leaves nothing | **Pass** | No files, no HKCU uninstall entry, no Start Menu shortcut |
-| S5 | electron-updater finds, downloads and applies a newer version | **Not run** | Needs a release host; GitHub is on hold. Can be tried against a local generic-provider server, which tests the updater mechanics but not GitHub Releases specifics |
+| S5 | electron-updater finds, downloads and applies a newer version | **Pass** (local feed, 2026-11-02) | `scripts/update-dryrun.cjs`: installed 0.1.0, found and downloaded 0.1.1 from a local generic-provider server, **Restart to update** (Settings button) relaunched into 0.1.1 about 21 s after the click, and the data survived. Tests the updater mechanics, **not** GitHub Releases specifics (those wait for M6b). The differential download fell back to a full one because the dry-run server does not answer multi-range requests; GitHub does, so that path is untested |
 
 ## Decisions
 
@@ -53,5 +53,5 @@ Ruling: no fallback. The `TextScaleFactor` registry read, `zoomFor` and the extr
 - [ ] **100% and 150% scaling:** now cases 1 to 16 of `docs/test-matrix.md`, run against the real app.
 - [ ] **Drag feel:** with `run.cmd s3 --keep`, drag a window around by its title bar and confirm the outline follows without visible lag.
 - [ ] **Mixed-DPI, two monitors:** needs a second display at a different scale. Deferred; decision 2 avoids depending on it.
-- [ ] **Auto-update (S5 second half):** needs a release host.
+- [x] **Auto-update (S5 second half):** passed against a local feed on 2026-11-02; the GitHub Releases leg waits for M6b.
 - [ ] **SignPath Foundation application:** needs the public GitHub repo.
