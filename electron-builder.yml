@@ -1,0 +1,50 @@
+# Packaging for the Windows installer. appId and productName are fixed identifiers: see docs/release.md and
+# src/main/identity.ts (tests/main/identity.test.ts fails if they drift apart).
+appId: io.github.seejjaay.barkstudy
+productName: BarkStudy
+copyright: MIT licensed
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**
+  - package.json
+
+asar: true
+# koffi loads a native .node file, which cannot be read from inside the archive.
+asarUnpack:
+  - node_modules/koffi/**
+
+# Fuses are flipped on the packaged Electron binary (Global Constraints): no run-as-node, no NODE_OPTIONS, no inspector
+# flags, the app loads only from the signed-in-place asar, and the asar is checked against its embedded hash at launch.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+  enableEmbeddedAsarIntegrityValidation: true
+
+win:
+  target:
+    - target: nsis
+      arch: x64
+  icon: build/icon.ico
+
+nsis:
+  # A one-click, per-user install: no admin prompt, no wizard, and Start Menu plus Desktop shortcuts are the defaults.
+  oneClick: true
+  perMachine: false
+  allowElevation: false
+  deleteAppDataOnUninstall: false
+  artifactName: BarkStudy-Setup-${version}.exe
+  uninstallDisplayName: BarkStudy
+  include: build/installer.nsh
+
+# The updater reads this from resources/app-update.yml. Releases are drafts until CJ publishes them.
+publish:
+  provider: github
+  owner: seejjaay
+  repo: BarkStudy
+  releaseType: draft

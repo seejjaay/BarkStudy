@@ -22,3 +22,8 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm audit --audit-level=high
+      - name: Package and verify the Windows build
+        if: runner.os == 'Windows'
+        run: |
+          npm run package
+          node scripts/verify-package.cjs
