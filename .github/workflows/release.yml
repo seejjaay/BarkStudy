@@ -135,3 +135,33 @@ jobs:
             cat notes.md
           } > notes-new.md
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes-new.md
+
+  # winget: only for a stable release at 1.0 or later, and only once WINGET_TOKEN exists. The first submission of the package
+  # is made by hand (wingetcreate new); this job then files the update PR for every later release. See docs/release.md.
+  winget:
+    needs: [release-please, publish]
+    runs-on: windows-latest
+    permissions: {}
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+      HAVE_TOKEN: ${{ secrets.WINGET_TOKEN != '' }}
+    steps:
+      - name: Stable and 1.0 or later?
+        id: gate
+        shell: bash
+        run: |
+          # "v1.2.3" qualifies; "v0.9.0" (too early) and "v1.2.3-beta.1" (a prerelease) do not.
+          if [[ "$TAG" =~ ^v([1-9][0-9]*)\.[0-9]+\.[0-9]+$ ]] && [ "$HAVE_TOKEN" = "true" ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=false" >> "$GITHUB_OUTPUT"
+            echo "Not submitting $TAG to winget (needs a stable tag at 1.0 or later and the WINGET_TOKEN secret)."
+          fi
+      - name: Submit the update to winget-pkgs
+        if: steps.gate.outputs.go == 'true'
+        uses: vedantmgoyal9/winget-releaser@b7370d4d152efdce803a26cc6ca9eee58cb2ad54 # v2
+        with:
+          identifier: seejjaay.BarkStudy
+          installers-regex: 'BarkStudy-Setup-.*\.exe$'
+          release-tag: ${{ env.TAG }}
+          token: ${{ secrets.WINGET_TOKEN }}
