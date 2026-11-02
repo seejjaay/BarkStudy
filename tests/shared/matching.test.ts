@@ -147,8 +147,12 @@ describe('matchAnswer: properties', () => {
 
   it('is fast on long answers', () => {
     const long = 'word '.repeat(60);
-    const t0 = performance.now();
-    for (let i = 0; i < 200; i++) matchAnswer(long + 'x', long + 'y');
-    expect(performance.now() - t0).toBeLessThan(1000);
+    // The fastest of three batches: a full parallel run can starve one batch of CPU, but a real slowdown slows all three.
+    const batch = (): number => {
+      const t0 = performance.now();
+      for (let i = 0; i < 200; i++) matchAnswer(long + 'x', long + 'y');
+      return performance.now() - t0;
+    };
+    expect(Math.min(batch(), batch(), batch())).toBeLessThan(1000);
   });
 });
