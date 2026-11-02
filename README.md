@@ -4,6 +4,32 @@ Pandesal is a dog that walks your real title bars, schedules your flashcards wit
 
 Free, open source (MIT), Windows only. Work in progress: see [PLAN.md](PLAN.md) for the roadmap and [docs/SPEC.md](docs/SPEC.md) for the original vision.
 
+<!-- TODO: a screenshot or short GIF of Pandesal on a title bar goes here once the art is final. -->
+
+## Install
+
+Download the latest `BarkStudy-Setup-X.Y.Z.exe` from [Releases](https://github.com/seejjaay/BarkStudy/releases) and run it. It installs for your account only, with no administrator prompt.
+
+**Builds are not code-signed yet**, so Windows SmartScreen will warn: choose **More info**, then **Run anyway**. Signed builds come once the code-signing application is approved. To check a download yourself, the release page lists what it contains and the source here is what built it.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+Releases are unsigned until that is in place, and the release notes say so while it is true. Once signing is on:
+
+- **What gets signed:** only the BarkStudy installer and `BarkStudy.exe`, built from this repository's source by the [Release workflow](.github/workflows/release.yml) on GitHub's own runners from a release tag. Nothing built anywhere else is signed.
+- **Who:** BarkStudy has one maintainer, [@seejjaay](https://github.com/seejjaay), who is its author, reviewer and approver. Every release is approved by hand in SignPath before it is signed. Contributions from others go through pull requests that the maintainer reviews.
+- **Privacy:** see [PRIVACY.md](PRIVACY.md). In short, the only network request the app makes is the update check, and nothing from your decks, history or settings is sent.
+
+## Updates
+
+BarkStudy checks this repository's GitHub Releases shortly after it starts and about every six hours, downloads a newer version in the background, and tells you. It never restarts on its own while you study: **Restart to update** is in the tray menu and in Settings, and waits until your session ends. Turn checking off in Settings → System. **Include beta versions** opts in to prereleases.
+
+## Privacy
+
+BarkStudy reads where your windows are and which program owns each one, never their titles or contents, and takes no screenshots. Your decks, history and settings stay on your PC. The only network request the app makes is the update check, and there is no telemetry. The details are in [PRIVACY.md](PRIVACY.md).
+
 ## Development
 
 Node 24 LTS.
@@ -13,10 +39,10 @@ npm ci
 node node_modules/electron/install.js   # npm 12 blocks Electron's own install script
 npm run typecheck && npm run lint && npm test
 npm run e2e                              # builds, then drives the real overlay (moves its own test window only)
-npm run dev                              # run the app; Ctrl+Alt+Q quits (a tray replaces this in M3)
+npm run dev                              # run the app; quit it from the tray menu
 ```
 
-If your terminal sets `ELECTRON_RUN_AS_NODE` (VS Code's does), unset it before launching Electron by hand. Manual checks are listed in [docs/test-matrix.md](docs/test-matrix.md).
+If your terminal sets `ELECTRON_RUN_AS_NODE` (VS Code's does), unset it before launching Electron by hand. Manual checks are listed in [docs/test-matrix.md](docs/test-matrix.md). See [CONTRIBUTING.md](CONTRIBUTING.md) before sending a change.
 
 Pandesal's sounds (bark, whine, happy yip, dig scratch) are short placeholders synthesized in code. The tray menu has a **Sounds** toggle and a **Volume** submenu; he makes no sound while paused, on a Stay, away, or in an excluded or fullscreen app.
 
