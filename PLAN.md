@@ -325,7 +325,7 @@ step(s: EngineState, e: Event, ctx: Context): { state: EngineState; actions: Act
 - **T5.5 Power awareness.** On battery saver, roaming stops and the dog naps, with check-ins unaffected.
 - **T5.6 e2e (Playwright `_electron`).** Smoke flows: first run → onboarding → sample session answered → summary, and import a deck → export round-trips. Teardown closes the app first, then the temp userData dir, so a failing test still exits in seconds.
 
-## Milestone 6: Release engineering *(split in two. **M6a:** local packaging, fuses, the uninstaller prompt, the updater and a local update dry run, i.e. T6.1 and T6.3 plus the second half of spike S5; plan in `docs/superpowers/plans/2026-11-02-m6a-packaging-updater.md`. **M6b:** what needs GitHub Actions and the public repo, i.e. T6.2 signing, T6.4 release-please, T6.5 winget, T6.6 repo docs and `release.yml`.)*
+## Milestone 6: Release engineering *(split in two. **M6a:** local packaging, fuses, the uninstaller prompt, the updater and a local update dry run, i.e. T6.1 and T6.3 plus the second half of spike S5; plan in `docs/superpowers/plans/2026-11-02-m6a-packaging-updater.md`. **M6b:** what needs GitHub Actions and the public repo, i.e. T6.2 signing, T6.4 release-please, T6.5 winget, T6.6 repo docs and `release.yml`; plan in `docs/superpowers/plans/2026-11-03-m6b-release.md`. **M6a is done.**)*
 
 *Acceptance: pushing a `vX.Y.Z` tag produces a signed installer on GitHub Releases, existing installs auto-update to it, and `winget install` works.*
 

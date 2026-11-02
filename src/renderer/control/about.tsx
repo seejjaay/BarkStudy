@@ -9,6 +9,7 @@ const LINKS: { id: LinkId; label: string }[] = [
   { id: 'repo', label: T.links.repo },
   { id: 'releases', label: T.links.releases },
   { id: 'license', label: T.links.license },
+  { id: 'privacy', label: T.links.privacy },
 ];
 
 export function AboutPage({ version, sessionRunning, onRunSetup }: { version: string; sessionRunning: boolean; onRunSetup: () => void }) {
