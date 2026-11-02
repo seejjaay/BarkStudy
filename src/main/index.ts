@@ -17,6 +17,7 @@ import { createDogHost } from './dogHost';
 import { createEscapeKey } from './escapeKey';
 import { createFileAccess } from './files';
 import { createIdleMonitor } from './idle';
+import { APP_ID, USER_DATA_NAME } from './identity';
 import { createLeaveIt } from './leaveIt';
 import { createLibrary } from './library';
 import { createLog } from './logs';
@@ -37,6 +38,11 @@ const rendererUrl = process.env['ELECTRON_RENDERER_URL'];
 const devOrigin = rendererUrl ? new URL(rendererUrl).origin : null;
 // Tests drive the app through a debug surface and track our own windows; never in a packaged build.
 const e2e = process.env['BARKSTUDY_E2E'] === '1' && !app.isPackaged;
+
+// The data folder and the Windows app identity are pinned, not derived from the package name (see identity.ts). Dev runs
+// share the folder with the installed app: Windows paths ignore case, so "barkstudy" and "BarkStudy" are one directory.
+app.setPath('userData', join(app.getPath('appData'), USER_DATA_NAME));
+app.setAppUserModelId(APP_ID);
 
 // Tests must never touch the real decks and history.
 if (e2e) app.setPath('userData', process.env['BARKSTUDY_USER_DATA'] ?? join(tmpdir(), `barkstudy-e2e-${process.pid}`));
