@@ -139,6 +139,8 @@ function serve(dir) {
     console.log('   Also worth a look first: start a session, and the item should read "...restarts after this session" and not click.');
     report(await waitFor('the restart', 600_000, () => fileVersion(installedExe).startsWith('0.1.1') && running()), 'the app restarted into 0.1.1 and is running');
     report(fileVersion(installedExe).startsWith('0.1.1'), `the installed version is now ${fileVersion(installedExe)}`);
+    console.log('   0.1.1 is up: look at its window and the notification area now. It stays open for 45 s, then the script uninstalls it.');
+    await sleep(45_000);
     const dataAfter = listFiles(path.join(userData, 'data'));
     report(dataBefore.every((f) => dataAfter.includes(f)), 'every data file from before is still there after the update');
 
