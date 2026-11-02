@@ -25,6 +25,8 @@ function updateLine(u: UpdaterView): string {
       return T.update.downloading(u.version ?? '');
     case 'ready':
       return T.update.ready(u.version ?? '');
+    case 'installing':
+      return T.update.installing(u.version ?? '');
   }
 }
 

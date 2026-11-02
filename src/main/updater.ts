@@ -5,6 +5,11 @@ import type { Log } from './logs';
 export const FIRST_CHECK_MS = 30_000;
 /** After that, a check every six hours. */
 export const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
+/**
+ * After Restart to update is clicked, the app says it is installing and waits this long before closing, so the person sees
+ * that something is happening. The install itself then takes about twenty seconds with no window of ours.
+ */
+export const INSTALL_DELAY_MS = 1500;
 
 export type ClientEvent =
   | { type: 'available'; version: string }
@@ -31,6 +36,8 @@ export interface UpdaterOptions {
   sessionRunning: () => boolean;
   /** Called once per version, when it has finished downloading. */
   announce: (version: string) => void;
+  /** Called when the restart is under way, while the app is still open: the notification outlives the gap that follows. */
+  announceInstalling: (version: string) => void;
   onChange: () => void;
   log: Pick<Log, 'info' | 'warn' | 'error'>;
   setTimer?: (fn: () => void, ms: number) => unknown;
@@ -76,7 +83,7 @@ export function createUpdater(opts: UpdaterOptions): Updater {
   function schedule(ms: number): void {
     if (timer !== null) clearTimer(timer);
     timer = null;
-    if (disposed || state === 'unavailable' || state === 'off' || state === 'ready') return;
+    if (disposed || state === 'unavailable' || state === 'off' || state === 'ready' || state === 'installing') return;
     timer = setTimer(() => {
       timer = null;
       void check();
@@ -107,7 +114,7 @@ export function createUpdater(opts: UpdaterOptions): Updater {
   }
 
   function onEvent(event: ClientEvent): void {
-    if (state === 'off' || state === 'unavailable') return;
+    if (state === 'off' || state === 'unavailable' || state === 'installing') return;
     switch (event.type) {
       case 'available':
         opts.log.info('updater', `update ${event.version} found, downloading`);
@@ -135,7 +142,7 @@ export function createUpdater(opts: UpdaterOptions): Updater {
   async function check(): Promise<void> {
     if (disposed || !opts.settings().updateChecks) return;
     // One at a time, and nothing to look for once a newer version is already waiting.
-    if (state === 'checking' || state === 'downloading' || state === 'ready' || state === 'unavailable') {
+    if (state === 'checking' || state === 'downloading' || state === 'ready' || state === 'installing' || state === 'unavailable') {
       schedule(CHECK_EVERY_MS);
       return;
     }
@@ -169,7 +176,8 @@ export function createUpdater(opts: UpdaterOptions): Updater {
       const beta = wasBeta;
       wasOn = s.updateChecks;
       wasBeta = s.betaChannel;
-      if (state === 'unavailable' || !started) return;
+      // Once the restart is under way it carries on whatever the settings say; they are applied at the next start.
+      if (state === 'unavailable' || state === 'installing' || !started) return;
       applyToClient();
       if (!s.updateChecks) {
         if (timer !== null) clearTimer(timer);
@@ -188,9 +196,23 @@ export function createUpdater(opts: UpdaterOptions): Updater {
     view: () => ({ state, version }),
 
     restart() {
-      if (state !== 'ready' || !client) return 'not-ready';
+      if (state === 'installing') return 'ok'; // a second click while it is under way
+      if (state !== 'ready' || !client || version === null) return 'not-ready';
       if (opts.sessionRunning()) return 'session-running';
-      client.quitAndInstall();
+      const target = version;
+      const c = client;
+      set('installing', target);
+      opts.announceInstalling(target);
+      timer = setTimer(() => {
+        timer = null;
+        try {
+          c.quitAndInstall();
+        } catch (err) {
+          // Back to ready, so the person can try again.
+          opts.log.error('updater', 'could not start the install', err);
+          set('ready', target);
+        }
+      }, INSTALL_DELAY_MS);
       return 'ok';
     },
 

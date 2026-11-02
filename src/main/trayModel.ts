@@ -132,7 +132,9 @@ export function buildTrayMenu(inputs: TrayInputs): MenuItemSpec[] {
   );
 
   // A downloaded update waits for the end of a session; the item says so and cannot be clicked until then.
-  if (inputs.update.state === 'ready' && inputs.update.version !== null) {
+  if (inputs.update.state === 'installing' && inputs.update.version !== null) {
+    items.push(sep, { label: TRAY.updateInstalling(inputs.update.version), enabled: false });
+  } else if (inputs.update.state === 'ready' && inputs.update.version !== null) {
     items.push(
       sep,
       view.phase === 'running'

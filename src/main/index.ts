@@ -194,6 +194,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
     createClient: async () => (await import('./updaterClient')).createElectronUpdaterClient(log),
     sessionRunning: () => studySession.view().phase === 'running',
     announce: (version) => notify(TRAY.updateReady(version)),
+    announceInstalling: (version) => notify(TRAY.installingNotice(version)),
     onChange: () => publishStatus(),
     log,
   });

@@ -345,6 +345,13 @@ describe('the update item', () => {
     expect(waiting?.id).toBeUndefined();
   });
 
+  it('while installing, the menu says so and offers nothing to click', () => {
+    const items = flat(buildTrayMenu(inputs({ update: { state: 'installing', version: '0.2.0' } })));
+    expect(items.find((i) => i.id === 'restart-update')).toBeUndefined();
+    const line = items.find((i) => /Installing 0.2.0/.test(i.label));
+    expect(line?.enabled).toBe(false);
+  });
+
   it('the id reads back as the restart action', () => {
     expect(parseTrayAction('restart-update')).toEqual({ kind: 'restart-update' });
   });

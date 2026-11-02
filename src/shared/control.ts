@@ -278,9 +278,10 @@ export const OP_NAMES: readonly OpName[] = [
 
 /**
  * Where the updater is. `unavailable`: not the installed app, or the updater could not start. `off`: the person turned
- * checks off. `ready`: a newer version is downloaded and waits for a restart.
+ * checks off. `ready`: a newer version is downloaded and waits for a restart. `installing`: the restart was asked for; the app
+ * closes in a moment, installs, and reopens by itself.
  */
-export type UpdaterState = 'unavailable' | 'off' | 'idle' | 'checking' | 'downloading' | 'ready';
+export type UpdaterState = 'unavailable' | 'off' | 'idle' | 'checking' | 'downloading' | 'ready' | 'installing';
 export interface UpdaterView {
   state: UpdaterState;
   /** The newer version, while it downloads or waits. */

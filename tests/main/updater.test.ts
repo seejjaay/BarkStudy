@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { CHECK_EVERY_MS, FIRST_CHECK_MS, createUpdater, type ClientEvent, type UpdateClient, type UpdaterOptions } from '../../src/main/updater';
+import { CHECK_EVERY_MS, FIRST_CHECK_MS, INSTALL_DELAY_MS, createUpdater, type ClientEvent, type UpdateClient, type UpdaterOptions } from '../../src/main/updater';
 
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 
@@ -38,6 +38,8 @@ interface FakeClient extends UpdateClient {
   /** What a check does when it runs: report these events, or fail. */
   onCheck: ClientEvent[];
   failWith: Error | null;
+  /** quitAndInstall throws this. */
+  installError: Error | null;
 }
 
 function setup(over: Partial<UpdaterOptions> = {}, initial = { updateChecks: true, betaChannel: false }) {
@@ -51,6 +53,7 @@ function setup(over: Partial<UpdaterOptions> = {}, initial = { updateChecks: tru
     installs: 0,
     onCheck: [],
     failWith: null,
+    installError: null,
     check: () => {
       client.checks++;
       if (client.failWith) return Promise.reject(client.failWith);
@@ -59,12 +62,13 @@ function setup(over: Partial<UpdaterOptions> = {}, initial = { updateChecks: tru
     },
     quitAndInstall: () => {
       client.installs++;
+      if (client.installError) throw client.installError;
     },
     onEvent: (cb: (e: ClientEvent) => void) => {
       listener = cb;
     },
   };
-  const calls = { created: 0, announced: [] as string[], changes: 0, errors: 0, warns: [] as string[] };
+  const calls = { created: 0, installing: [] as string[], announced: [] as string[], changes: 0, errors: 0, warns: [] as string[] };
   let session = false;
   const updater = createUpdater({
     enabled: true,
@@ -75,6 +79,7 @@ function setup(over: Partial<UpdaterOptions> = {}, initial = { updateChecks: tru
     },
     sessionRunning: () => session,
     announce: (v) => calls.announced.push(v),
+    announceInstalling: (v) => calls.installing.push(v),
     onChange: () => calls.changes++,
     log: { info: () => undefined, warn: (_a, m) => calls.warns.push(m), error: () => calls.errors++ },
     setTimer: clock.setTimer,
@@ -196,10 +201,60 @@ describe('restarting into the update', () => {
     const t = await ready();
     t.setSession(true);
     expect(t.updater.restart()).toBe('session-running');
-    expect(t.client.installs).toBe(0);
+    expect(t.updater.view().state).toBe('ready');
+    expect(t.calls.installing).toEqual([]);
     t.setSession(false);
     expect(t.updater.restart()).toBe('ok');
+    await t.clock.advance(INSTALL_DELAY_MS);
     expect(t.client.installs).toBe(1);
+  });
+
+  it('says it is installing at once, and closes only after a short delay so that can be seen', async () => {
+    const t = await ready();
+    expect(t.updater.restart()).toBe('ok');
+    expect(t.updater.view()).toEqual({ state: 'installing', version: '0.2.0' });
+    expect(t.calls.installing).toEqual(['0.2.0']);
+    expect(t.client.installs).toBe(0);
+    await t.clock.advance(INSTALL_DELAY_MS - 1);
+    expect(t.client.installs).toBe(0);
+    await t.clock.advance(1);
+    expect(t.client.installs).toBe(1);
+  });
+
+  it('a second click while it is installing changes nothing and starts nothing more', async () => {
+    const t = await ready();
+    t.updater.restart();
+    expect(t.updater.restart()).toBe('ok');
+    await t.clock.advance(INSTALL_DELAY_MS * 3);
+    expect(t.client.installs).toBe(1);
+    expect(t.calls.installing).toEqual(['0.2.0']);
+  });
+
+  it('while installing, no new check runs, no event moves it, and the settings do not stop it', async () => {
+    const t = await ready();
+    t.updater.restart();
+    const checks = t.client.checks;
+    t.emit({ type: 'error', message: 'x' });
+    t.emit({ type: 'none' });
+    t.settings.updateChecks = false;
+    t.updater.settingsChanged();
+    await t.clock.advance(CHECK_EVERY_MS);
+    expect(t.client.checks).toBe(checks);
+    expect(t.updater.view().state).toBe('installing');
+    expect(t.client.installs).toBe(1);
+  });
+
+  it('an install that cannot start goes back to ready, so it can be tried again', async () => {
+    const t = await ready();
+    t.client.installError = new Error('no installer');
+    t.updater.restart();
+    await t.clock.advance(INSTALL_DELAY_MS);
+    expect(t.updater.view()).toEqual({ state: 'ready', version: '0.2.0' });
+    expect(t.calls.errors).toBe(1);
+    t.client.installError = null;
+    expect(t.updater.restart()).toBe('ok');
+    await t.clock.advance(INSTALL_DELAY_MS);
+    expect(t.client.installs).toBe(2);
   });
 
   it('is refused when nothing is ready', () => {
@@ -290,6 +345,7 @@ describe('property: the updater never asks for anything while checks are off', (
       const checksBefore = t.client.checks;
       const installsBefore = t.client.installs;
       const wasOff = !t.settings.updateChecks;
+      const wasInstalling = t.updater.view().state === 'installing';
       switch (op.kind) {
         case 'advance':
           await t.clock.advance(op.ms);
@@ -315,11 +371,12 @@ describe('property: the updater never asks for anything while checks are off', (
           break;
       }
       if (wasOff && !t.settings.updateChecks) {
-        // Still off after this step: no request, no install.
+        // Still off after this step: no request. Nor an install, unless the restart was already under way.
         expect(t.client.checks).toBe(checksBefore);
-        expect(t.client.installs).toBe(installsBefore);
+        if (!wasInstalling) expect(t.client.installs).toBe(installsBefore);
       }
-      if (!t.settings.updateChecks) {
+      // A restart under way carries on whatever the settings say; its one timer is the delayed install.
+      if (!t.settings.updateChecks && t.updater.view().state !== 'installing') {
         expect(t.updater.view().state).toBe('off');
         expect(t.clock.pending()).toBe(0);
       }
@@ -335,6 +392,6 @@ describe('property: the updater never asks for anything while checks are off', (
   it('the generator reaches off, checking, downloading and ready', async () => {
     const reached = new Set<string>();
     await fc.assert(fc.asyncProperty(fc.array(opArb, { minLength: 5, maxLength: 30 }), (ops) => run(ops, reached)), { numRuns: 200 });
-    for (const state of ['off', 'idle', 'downloading', 'ready']) expect(reached.has(state) || reached.has(`${state}/off-setting`)).toBe(true);
+    for (const state of ['off', 'idle', 'downloading', 'ready', 'installing']) expect(reached.has(state) || reached.has(`${state}/off-setting`)).toBe(true);
   });
 });
