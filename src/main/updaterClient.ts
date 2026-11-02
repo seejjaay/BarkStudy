@@ -15,7 +15,8 @@ export function createElectronUpdaterClient(log: Pick<Log, 'info' | 'warn' | 'er
   autoUpdater.logger = {
     info: (m?: unknown) => log.info('updater', String(m)),
     warn: (m?: unknown) => log.warn('updater', String(m)),
-    error: (m?: unknown) => log.warn('updater', String(m)),
+    // A failed check or install is logged once, as a warning or error, by updater.ts; electron-updater's copy is detail.
+    error: (m?: unknown) => log.info('updater', String(m)),
     debug: () => undefined,
   };
 

@@ -30,11 +30,11 @@ export const TRAY = {
   sounds: 'Sounds',
   volume: 'Volume',
   restartToUpdate: (version: string) => `Restart to update to ${version}`,
-  updateAfterSession: (version: string) => `Update ${version} is ready (restarts after this session)`,
+  updateAfterSession: (version: string) => `Update ${version} is ready: restart from here when your session ends`,
   updateReady: (version: string) => `BarkStudy ${version} is ready. Restart from the tray menu when you are done.`,
   updateInstalling: (version: string) => `Installing ${version}: BarkStudy reopens by itself`,
   installingNotice: (version: string) => `Installing BarkStudy ${version}. It closes and reopens by itself in about half a minute.`,
-  updateWaits: 'The update waits until your session ends.',
+  updateWaits: 'You can restart to update once your session ends.',
   open: 'Open BarkStudy',
   quit: 'Quit BarkStudy',
 

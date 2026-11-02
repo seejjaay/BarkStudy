@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { CHECK_EVERY_MS, FIRST_CHECK_MS, INSTALL_DELAY_MS, createUpdater, type ClientEvent, type UpdateClient, type UpdaterOptions } from '../../src/main/updater';
+import { CHECK_EVERY_MS, FIRST_CHECK_MS, INSTALL_DELAY_MS, INSTALL_TIMEOUT_MS, createUpdater, type ClientEvent, type UpdateClient, type UpdaterOptions } from '../../src/main/updater';
 
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 
@@ -141,12 +141,30 @@ describe('when it checks', () => {
     expect(t.calls.errors).toBe(1);
   });
 
-  it('a failed check is quiet, goes back to idle, and is tried again next cycle', async () => {
+  it('before the first check it is waiting, not up to date', () => {
+    const t = setup();
+    t.updater.start();
+    expect(t.updater.view().state).toBe('waiting');
+  });
+
+  it('one failed check is one warning, even though electron-updater both reports an error and rejects', async () => {
+    const t = setup();
+    t.client.onCheck = [{ type: 'error', message: 'offline' }];
+    t.client.failWith = new Error('offline');
+    t.updater.start();
+    await t.clock.advance(FIRST_CHECK_MS);
+    expect(t.updater.view().state).toBe('failed');
+    expect(t.calls.warns).toHaveLength(1);
+    await t.clock.advance(CHECK_EVERY_MS);
+    expect(t.calls.warns).toHaveLength(2);
+  });
+
+  it('a failed check is quiet, says it failed (not up to date), and is tried again next cycle', async () => {
     const t = setup();
     t.client.failWith = new Error('offline');
     t.updater.start();
     await t.clock.advance(FIRST_CHECK_MS);
-    expect(t.updater.view().state).toBe('idle');
+    expect(t.updater.view().state).toBe('failed');
     expect(t.calls.announced).toEqual([]);
     expect(t.calls.warns.some((w) => w.includes('offline'))).toBe(true);
     t.client.failWith = null;
@@ -230,18 +248,73 @@ describe('restarting into the update', () => {
     expect(t.calls.installing).toEqual(['0.2.0']);
   });
 
-  it('while installing, no new check runs, no event moves it, and the settings do not stop it', async () => {
+  it('while installing, no new check runs, no check event moves it, and the settings do not stop it', async () => {
     const t = await ready();
     t.updater.restart();
     const checks = t.client.checks;
-    t.emit({ type: 'error', message: 'x' });
     t.emit({ type: 'none' });
+    t.emit({ type: 'available', version: '0.3.0' });
     t.settings.updateChecks = false;
     t.updater.settingsChanged();
-    await t.clock.advance(CHECK_EVERY_MS);
+    // Up to the install timeout; in real use the app has quit long before then.
+    await t.clock.advance(INSTALL_DELAY_MS + INSTALL_TIMEOUT_MS - 1);
     expect(t.client.checks).toBe(checks);
     expect(t.updater.view().state).toBe('installing');
     expect(t.client.installs).toBe(1);
+  });
+
+  it('an install that fails the way electron-updater reports it (an error event) goes back to ready', async () => {
+    const t = await ready();
+    t.updater.restart();
+    await t.clock.advance(INSTALL_DELAY_MS);
+    t.emit({ type: 'error', message: 'installer missing' });
+    expect(t.updater.view()).toEqual({ state: 'ready', version: '0.2.0' });
+    expect(t.calls.errors).toBe(1);
+    expect(t.updater.restart()).toBe('ok');
+    expect(t.updater.view().state).toBe('installing');
+  });
+
+  it('an app still running long after the install started gets Restart to update back', async () => {
+    const t = await ready();
+    t.updater.restart();
+    await t.clock.advance(INSTALL_DELAY_MS + INSTALL_TIMEOUT_MS - 1);
+    expect(t.updater.view().state).toBe('installing');
+    await t.clock.advance(1);
+    expect(t.updater.view()).toEqual({ state: 'ready', version: '0.2.0' });
+  });
+
+  it('a failed install with checks turned off meanwhile ends off, and will not install on quit', async () => {
+    const t = await ready();
+    t.updater.restart();
+    t.settings.updateChecks = false;
+    t.updater.settingsChanged();
+    await t.clock.advance(INSTALL_DELAY_MS);
+    t.emit({ type: 'error', message: 'x' });
+    expect(t.updater.view().state).toBe('off');
+    expect(t.client.autoInstallOnAppQuit).toBe(false);
+  });
+
+  it('the pending check timer is cancelled at the click, so it cannot cancel the install', async () => {
+    const t = setup();
+    t.client.onCheck = [{ type: 'available', version: '0.2.0' }];
+    t.updater.start();
+    await t.clock.advance(FIRST_CHECK_MS); // the check ends while downloading and arms the next check
+    t.emit({ type: 'downloaded', version: '0.2.0' });
+    expect(t.clock.pending()).toBe(1);
+    t.updater.restart();
+    expect(t.clock.pending()).toBe(1); // only the install timer
+    await t.clock.advance(INSTALL_DELAY_MS);
+    expect(t.client.installs).toBe(1);
+  });
+
+  it('a session started during the short delay is not cut off: back to ready, nothing installed', async () => {
+    const t = await ready();
+    t.updater.restart();
+    t.setSession(true);
+    await t.clock.advance(INSTALL_DELAY_MS);
+    expect(t.client.installs).toBe(0);
+    expect(t.updater.view()).toEqual({ state: 'ready', version: '0.2.0' });
+    expect(t.updater.restart()).toBe('session-running');
   });
 
   it('an install that cannot start goes back to ready, so it can be tried again', async () => {
@@ -281,6 +354,57 @@ describe('restarting into the update', () => {
     t.updater.settingsChanged();
     await settle();
     expect(t.client.checks).toBe(before + 1);
+    expect(t.client.autoInstallOnAppQuit).toBe(true);
+  });
+});
+
+describe('turning the beta channel off', () => {
+  async function betaReady() {
+    const t = setup({}, { updateChecks: true, betaChannel: true });
+    t.client.onCheck = [{ type: 'available', version: '0.2.0-beta.1' }];
+    t.updater.start();
+    await t.clock.advance(FIRST_CHECK_MS);
+    t.emit({ type: 'downloaded', version: '0.2.0-beta.1' });
+    t.client.onCheck = [{ type: 'none' }];
+    return t;
+  }
+
+  it('drops a beta that is waiting: no Restart to update, no install on quit, and it looks again', async () => {
+    const t = await betaReady();
+    expect(t.updater.view().state).toBe('ready');
+    const checks = t.client.checks;
+    t.settings.betaChannel = false;
+    t.updater.settingsChanged();
+    await settle();
+    expect(t.updater.view()).toEqual({ state: 'idle', version: null });
+    expect(t.client.autoInstallOnAppQuit).toBe(false);
+    expect(t.client.allowPrerelease).toBe(false);
+    expect(t.client.checks).toBe(checks + 1);
+    expect(t.updater.restart()).toBe('not-ready');
+  });
+
+  it('a beta that finishes downloading after that is ignored; a stable one replaces it and may install again', async () => {
+    const t = await betaReady();
+    t.settings.betaChannel = false;
+    t.updater.settingsChanged();
+    await settle();
+    t.emit({ type: 'downloaded', version: '0.2.0-beta.1' });
+    expect(t.updater.view().state).toBe('idle');
+    t.emit({ type: 'downloaded', version: '0.2.0' });
+    expect(t.updater.view()).toEqual({ state: 'ready', version: '0.2.0' });
+    expect(t.client.autoInstallOnAppQuit).toBe(true);
+  });
+
+  it('a stable version waiting is kept when beta goes off', async () => {
+    const t = setup({}, { updateChecks: true, betaChannel: true });
+    t.client.onCheck = [{ type: 'available', version: '0.2.0' }];
+    t.updater.start();
+    await t.clock.advance(FIRST_CHECK_MS);
+    t.emit({ type: 'downloaded', version: '0.2.0' });
+    t.settings.betaChannel = false;
+    t.updater.settingsChanged();
+    await settle();
+    expect(t.updater.view()).toEqual({ state: 'ready', version: '0.2.0' });
     expect(t.client.autoInstallOnAppQuit).toBe(true);
   });
 });

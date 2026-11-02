@@ -15,13 +15,15 @@ export const SETTINGS = {
   update: {
     unavailable: 'Updates work in the installed app.',
     off: 'Update checks are off.',
+    waiting: 'BarkStudy checks shortly after it starts, then every few hours.',
     idle: 'Up to date as of the last check. BarkStudy looks again every few hours.',
+    failed: 'Could not check for updates just now. BarkStudy tries again later.',
     checking: 'Checking for updates…',
     downloading: (version: string) => `Version ${version} is downloading in the background.`,
     ready: (version: string) => `Version ${version} is ready.`,
     installing: (version: string) => `Installing version ${version}. BarkStudy closes and reopens by itself in about half a minute.`,
     restart: 'Restart to update',
-    waits: 'The restart waits until your session ends.',
+    waits: 'You can restart once your session ends.',
     restartFailed: 'Could not restart into the update. Try again from the tray menu.',
   },
 

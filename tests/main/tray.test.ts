@@ -340,7 +340,7 @@ describe('the update item', () => {
   it('during a session the item says it waits, and cannot be clicked', () => {
     const items = flat(buildTrayMenu(inputs({ update: ready, view: running() })));
     expect(items.find((i) => i.id === 'restart-update')).toBeUndefined();
-    const waiting = items.find((i) => /after this session/.test(i.label));
+    const waiting = items.find((i) => /when your session ends/.test(i.label));
     expect(waiting?.enabled).toBe(false);
     expect(waiting?.id).toBeUndefined();
   });

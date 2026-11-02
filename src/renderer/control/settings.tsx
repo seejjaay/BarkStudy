@@ -17,8 +17,12 @@ function updateLine(u: UpdaterView): string {
       return T.update.unavailable;
     case 'off':
       return T.update.off;
+    case 'waiting':
+      return T.update.waiting;
     case 'idle':
       return T.update.idle;
+    case 'failed':
+      return T.update.failed;
     case 'checking':
       return T.update.checking;
     case 'downloading':
