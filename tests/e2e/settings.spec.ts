@@ -138,3 +138,15 @@ test('About, Copy diagnostics shows the bundle with the engine log and none of t
   await dialog.locator('.dialog-actions').getByRole('button', { name: 'Close' }).click();
   await expect(dialog).toHaveCount(0);
 });
+
+test('the update status says updates work in the installed app, and the choices still save', async () => {
+  await open();
+  await nav('Settings').click();
+  await expect(page.getByText('Updates work in the installed app.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Restart to update' })).toHaveCount(0);
+  // The boxes follow the saved value, so click and then wait for it rather than asking Playwright to check them at once.
+  await page.getByRole('checkbox', { name: 'Include beta versions' }).click();
+  await expect(page.getByRole('checkbox', { name: 'Include beta versions' })).toBeChecked();
+  await page.getByRole('checkbox', { name: 'Check for updates' }).click();
+  await expect(page.getByRole('checkbox', { name: 'Include beta versions' })).toBeDisabled();
+});

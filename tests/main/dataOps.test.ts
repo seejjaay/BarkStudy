@@ -58,9 +58,10 @@ beforeEach(async () => {
     library: lib,
     session,
     files,
-    status: () => ({ trackerDown: false, batterySaver: false, leaveItConflict: false, leaveItLabel: 'Ctrl+Alt+L' }),
+    status: () => ({ trackerDown: false, batterySaver: false, leaveItConflict: false, leaveItLabel: 'Ctrl+Alt+L', update: { state: 'idle', version: null } }),
     platform: {
       loginItem: { get: () => ({ available: false, on: false }), set: () => undefined },
+      updates: { view: () => ({ state: 'idle', version: null }), changed: () => undefined, restart: () => 'not-ready' },
       openApps: () => [],
       dataDir: 'C:/data',
       openLink: () => undefined,
@@ -291,7 +292,7 @@ describe('afterReplace and a taken Leave it shortcut', () => {
     leave.register('Ctrl+Alt+K'); // what the user had bound before the reset
     taken.add('Ctrl+Alt+L'); // another app owns the saved (default) one
     const published: { leaveItConflict: boolean; leaveItLabel: string }[] = [];
-    const statusNow = () => ({ trackerDown: false, batterySaver: false, leaveItConflict: leave.conflict, leaveItLabel: leave.accelerator ?? '' });
+    const statusNow = () => ({ trackerDown: false, batterySaver: false, leaveItConflict: leave.conflict, leaveItLabel: leave.accelerator ?? '', update: { state: 'idle' as const, version: null } });
     const reset = createControlHandlers({
       library: lib,
       session,
@@ -299,7 +300,8 @@ describe('afterReplace and a taken Leave it shortcut', () => {
       status: statusNow,
       platform: {
         loginItem: { get: () => ({ available: false, on: false }), set: () => undefined },
-        openApps: () => [],
+        updates: { view: () => ({ state: 'idle', version: null }), changed: () => undefined, restart: () => 'not-ready' },
+      openApps: () => [],
         dataDir: 'C:/data',
         openLink: () => undefined,
         applyReducedMotion: () => undefined,

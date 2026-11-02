@@ -167,6 +167,7 @@ export interface SettingsView {
   openApps: string[];
   /** Where the data files live, for display. */
   dataDir: string;
+  update: UpdaterView;
 }
 
 export interface OnboardingFinish {
@@ -215,6 +216,8 @@ export interface ControlOps {
   'settings:update': [SettingsPatch, Result<Settings>];
   'settings:hotkey': [{ which: 'leaveIt' | 'bubble'; accelerator: string }, Result<Settings>];
   'settings:login-item': [{ on: boolean }, Result<LoginItemState>];
+  /** Restarts into the downloaded update. `session-running` while a session runs (it waits), `not-found` if nothing is downloaded. */
+  'update:restart': [void, Result<void>];
   'link:open': [{ id: LinkId }, Result<void>];
   /** Builds the diagnostics bundle (versions, counts, the engine log; paths and names scrubbed), keeps it in main and returns it for the preview. */
   'diagnostics:get': [void, string];
@@ -261,6 +264,7 @@ export const OP_NAMES: readonly OpName[] = [
   'settings:update',
   'settings:hotkey',
   'settings:login-item',
+  'update:restart',
   'link:open',
   'diagnostics:get',
   'diagnostics:copy',
@@ -289,6 +293,7 @@ export interface AppStatus {
   batterySaver: boolean;
   leaveItConflict: boolean;
   leaveItLabel: string;
+  update: UpdaterView;
 }
 
 export type ControlEvent = { type: 'session'; view: SessionView } | ({ type: 'status' } & AppStatus) | { type: 'leave-it-pressed' };

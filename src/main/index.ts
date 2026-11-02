@@ -3,6 +3,7 @@ import { arch, homedir, release, tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { app, clipboard, crashReporter, globalShortcut, ipcMain, Notification, powerMonitor, screen, session, shell, systemPreferences, type Display, type WebContents } from 'electron';
 import { DEFAULT_TUNING } from '../engine/tuning';
+import { TRAY } from '../shared/i18n/en';
 import type { Settings } from '../shared/settings';
 import { CONTROL_CHANNEL, type AppStatus } from '../shared/control';
 import type { DisplayInfo, RawWindow } from '../shared/geometry';
@@ -31,6 +32,7 @@ import { createSuppress } from './suppress';
 import { readBatterySaver } from './system/power-win32';
 import { createTray } from './tray';
 import { runTrayAction } from './trayModel';
+import { createUpdater } from './updater';
 import { createTracker, lazyWin32 } from './tracker/tracker';
 import { realWin32 } from './tracker/win32';
 
@@ -125,7 +127,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
   const notify = (message: string): void => {
     if (Notification.isSupported()) new Notification({ title: 'BarkStudy', body: message, silent: true }).show();
   };
-  const appStatus = (): AppStatus => ({ trackerDown, batterySaver: power.on, leaveItConflict: leaveIt.conflict, leaveItLabel: leaveIt.accelerator ?? library.getSettings().leaveItHotkey });
+  const appStatus = (): AppStatus => ({ trackerDown, batterySaver: power.on, leaveItConflict: leaveIt.conflict, leaveItLabel: leaveIt.accelerator ?? library.getSettings().leaveItHotkey, update: updater.view() });
   const publishStatus = (): void => {
     controlWindow.send({ type: 'status', ...appStatus() });
     appTray.refresh();
@@ -185,6 +187,16 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
     },
     fastTuning: e2e && process.env['BARKSTUDY_FAST_TUNING'] === '1',
   });
+  // The one network call the app makes of its own: the update check. Only the installed app runs it, and e2e never does.
+  const updater = createUpdater({
+    enabled: app.isPackaged && !e2e,
+    settings: () => library.getSettings(),
+    createClient: async () => (await import('./updaterClient')).createElectronUpdaterClient(log),
+    sessionRunning: () => studySession.view().phase === 'running',
+    announce: (version) => notify(TRAY.updateReady(version)),
+    onChange: () => publishStatus(),
+    log,
+  });
   // Leave it is registered from the saved setting, and is always on; the tray menu offers the same action.
   const leaveIt = createLeaveIt({
     session: studySession,
@@ -207,10 +219,11 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       batterySaver: power.on,
       soundOn: library.getSettings().soundOn,
       volume: library.getSettings().volume,
+      update: updater.view(),
     }),
     onOpen: () => controlWindow.show(),
     onAction: (action) =>
-      void runTrayAction(action, { session: studySession, library, openControl: () => controlWindow.show(), quit: () => app.quit(), notify }).then(() => appTray.refresh()),
+      void runTrayAction(action, { session: studySession, library, openControl: () => controlWindow.show(), quit: () => app.quit(), notify, restartToUpdate: () => updater.restart() }).then(() => appTray.refresh()),
   });
   const bubble = createBubbleHost({
     session: studySession,
@@ -263,12 +276,14 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       openLink: (url) => void shell.openExternal(url),
       applyReducedMotion,
       version: app.getVersion(),
+      updates: { view: () => updater.view(), changed: () => updater.settingsChanged(), restart: () => updater.restart() },
       openPath: (path) => shell.openPath(path),
       // The saved shortcuts, reduced motion and tray follow the settings that were just swapped in.
       afterReplace: () => {
         const saved = library.getSettings();
         leaveIt.restore(saved.leaveItHotkey);
         applyReducedMotion(saved.reducedMotion);
+        updater.settingsChanged();
         publishStatus();
       },
       setPractice: (on) => {
@@ -281,7 +296,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
           os: { release: release(), arch: arch() },
           displays: screen.getAllDisplays().map((d) => ({ width: d.size.width, height: d.size.height, scale: d.scaleFactor })),
           settings: saved,
-          state: { trackerDown, leaveItConflict: leaveIt.conflict, batterySaver: power.on, phase: studySession.view().phase },
+          state: { trackerDown, leaveItConflict: leaveIt.conflict, batterySaver: power.on, phase: studySession.view().phase, update: updater.view().state },
           crashes: crashDumps(join(logDir, 'crashes')),
           problems: log.tail(50, 'warn'),
           engine: studySession.diagnostics(),
@@ -384,6 +399,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
   // Here, after the tray exists, since a change it reports goes through publishStatus().
   if (e2e) power.force(false);
   power.start();
+  updater.start();
   // A start-with-Windows launch passes --hidden: the dog and the tray come up, the window waits to be opened.
   if (process.env['BARKSTUDY_NO_CONTROL'] !== '1' && !process.argv.includes('--hidden')) controlWindow.show();
 
@@ -403,6 +419,7 @@ void (firstInstance ? app.whenReady() : Promise.resolve()).then(async () => {
       tracker.stop();
       idle.stop();
       power.stop();
+      updater.dispose();
       studySession.dispose();
       escapeKey.dispose();
       bubble.dispose();

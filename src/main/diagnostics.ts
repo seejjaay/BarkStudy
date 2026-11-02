@@ -1,5 +1,5 @@
 import { ENGINE_LOG_FENCE, type EngineLog } from '../engine/replay';
-import type { SessionView } from '../shared/control';
+import type { SessionView, UpdaterView } from '../shared/control';
 import type { Settings } from '../shared/settings';
 
 /**
@@ -12,7 +12,7 @@ export interface DiagnosticsInput {
   os: { release: string; arch: string };
   displays: { width: number; height: number; scale: number }[];
   settings: Settings;
-  state: { trackerDown: boolean; leaveItConflict: boolean; batterySaver: boolean; phase: SessionView['phase'] };
+  state: { trackerDown: boolean; leaveItConflict: boolean; batterySaver: boolean; phase: SessionView['phase']; update: UpdaterView['state'] };
   crashes: { count: number; newest: number | null };
   /** `log.tail(50, 'warn')`, oldest first. An entry with a stack is one string with newlines. */
   problems: string[];
@@ -84,6 +84,7 @@ function summary(i: DiagnosticsInput): string {
       `Leave it shortcut conflict: ${yesNo(state.leaveItConflict)}`,
       `Battery saver: ${yesNo(state.batterySaver)}`,
       `Session phase: ${state.phase}`,
+      `Updates: ${state.update}`,
     ]),
     section('Crash dumps', [`Count: ${crashes.count}`, `Newest: ${crashes.newest === null ? 'none' : day(crashes.newest)}`]),
   ].join('\n');

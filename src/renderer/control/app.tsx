@@ -252,7 +252,7 @@ function Shell() {
           />
         )}
         {load.status === 'ready' && view === 'history' && <HistoryView snapshot={load.snapshot} />}
-        {load.status === 'ready' && view === 'settings' && <SettingsPage reloadKey={statusTick} onDataChanged={() => void refresh()} />}
+        {load.status === 'ready' && view === 'settings' && <SettingsPage reloadKey={statusTick} sessionRunning={session.phase === 'running'} onDataChanged={() => void refresh()} />}
         {load.status === 'ready' && view === 'about' && <AboutPage version={load.snapshot.version} sessionRunning={session.phase === 'running'} onRunSetup={() => setSetupAgain(true)} />}
       </main>
     </div>

@@ -7,6 +7,7 @@ import { createLibrary, type Library } from '../../src/main/library';
 import { LINKS } from '../../src/main/links';
 import { createSessionController, type SessionController } from '../../src/main/session';
 import { createStorage } from '../../src/main/storage/io';
+import type { RestartResult } from '../../src/main/updater';
 import type { Result, SettingsView } from '../../src/shared/control';
 import type { Settings } from '../../src/shared/settings';
 import { sampleDiagnosticsInput } from './diagnosticsFixture';
@@ -23,6 +24,8 @@ let leaveItRebinds: string[];
 let bubbleRebinds: string[];
 let leaveItTaken: boolean;
 let bubbleTaken: boolean;
+let updateChanged: number;
+let restartResult: RestartResult;
 
 const files: FileAccess = {
   pickImport: () => Promise.resolve({ ok: true, value: null }),
@@ -47,13 +50,15 @@ beforeEach(async () => {
   bubbleRebinds = [];
   leaveItTaken = false;
   bubbleTaken = false;
+  updateChanged = 0;
+  restartResult = 'not-ready';
   lib = await createLibrary({ storage: createStorage(dir) });
   session = createSessionController({ library: lib, seed: 1, publish: () => undefined });
   h = createControlHandlers({
     library: lib,
     session,
     files,
-    status: () => ({ trackerDown: false, batterySaver: false, leaveItConflict: false, leaveItLabel: 'Ctrl+Alt+L' }),
+    status: () => ({ trackerDown: false, batterySaver: false, leaveItConflict: false, leaveItLabel: 'Ctrl+Alt+L', update: { state: 'idle', version: null } }),
     platform: {
       loginItem: {
         get: () => ({ ...loginItem }),
@@ -62,6 +67,7 @@ beforeEach(async () => {
           loginItem.on = on;
         },
       },
+      updates: { view: () => ({ state: 'idle', version: null }), changed: () => void updateChanged++, restart: () => restartResult },
       openApps: () => ['chrome.exe', 'code.exe'],
       dataDir: 'C:/data',
       openLink: (url) => void opened.push(url),
@@ -237,5 +243,34 @@ describe('settings:login-item and link:open', () => {
   it('opens only the fixed address for a known id', async () => {
     ok(await call<Result<void>>('link:open', { id: 'repo' }));
     expect(opened).toEqual([LINKS.repo]);
+  });
+
+  describe('updates', () => {
+    it('tells the updater when the update checks or the beta channel change, and for nothing else', async () => {
+      ok(await call<Result<Settings>>('settings:update', { updateChecks: false }));
+      expect(updateChanged).toBe(1);
+      ok(await call<Result<Settings>>('settings:update', { betaChannel: true }));
+      expect(updateChanged).toBe(2);
+      ok(await call<Result<Settings>>('settings:update', { soundOn: false }));
+      expect(updateChanged).toBe(2);
+    });
+
+    it('a refused settings change does not reach the updater', async () => {
+      await call('settings:update', { updateChecks: 'yes' });
+      expect(updateChanged).toBe(0);
+    });
+
+    it('the settings view carries the updater state', async () => {
+      expect((await call<SettingsView>('settings:get')).update).toEqual({ state: 'idle', version: null });
+    });
+
+    it('restart goes through, waits for a session, or says there is nothing to restart into', async () => {
+      restartResult = 'ok';
+      expect(ok(await call<Result<void>>('update:restart'))).toBeUndefined();
+      restartResult = 'session-running';
+      expect(codeOf(await call<Result<void>>('update:restart'))).toBe('session-running');
+      restartResult = 'not-ready';
+      expect(codeOf(await call<Result<void>>('update:restart'))).toBe('not-found');
+    });
   });
 });

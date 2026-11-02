@@ -1,8 +1,9 @@
-import type { DeckSummary, Result, SessionAction, SessionView, StartRequest } from '../shared/control';
+import type { DeckSummary, Result, SessionAction, SessionView, StartRequest, UpdaterView } from '../shared/control';
 import { TRAY } from '../shared/i18n/en';
 import { sessionKind } from '../shared/sessionKind';
 import type { Library } from './library';
 import type { SessionController } from './session';
+import type { RestartResult } from './updater';
 
 /**
  * The tray is the always-there navigation. This file decides what its menu says and what each entry does, with no
@@ -44,11 +45,13 @@ export interface TrayInputs {
   soundOn: boolean;
   /** 0..1. */
   volume: number;
+  update: UpdaterView;
 }
 
 export type TrayAction =
   | { kind: 'open' }
   | { kind: 'quit' }
+  | { kind: 'restart-update' }
   | { kind: 'end' }
   | { kind: 'pause' }
   | { kind: 'resume' }
@@ -128,6 +131,16 @@ export function buildTrayMenu(inputs: TrayInputs): MenuItemSpec[] {
     { label: TRAY.volume, submenu: TRAY_VOLUMES.map((v) => ({ id: `volume:${v.level}`, label: v.label, kind: 'radio', checked: inputs.volume === v.level })) },
   );
 
+  // A downloaded update waits for the end of a session; the item says so and cannot be clicked until then.
+  if (inputs.update.state === 'ready' && inputs.update.version !== null) {
+    items.push(
+      sep,
+      view.phase === 'running'
+        ? { label: TRAY.updateAfterSession(inputs.update.version), enabled: false }
+        : { id: 'restart-update', label: TRAY.restartToUpdate(inputs.update.version) },
+    );
+  }
+
   items.push(sep, { id: 'open', label: TRAY.open }, { id: 'quit', label: TRAY.quit });
   return items;
 }
@@ -137,6 +150,7 @@ export function parseTrayAction(id: string): TrayAction | null {
   switch (id) {
     case 'open':
     case 'quit':
+    case 'restart-update':
     case 'end':
     case 'pause':
     case 'resume':
@@ -161,6 +175,8 @@ export interface TrayActionDeps {
   quit: () => void;
   /** A quiet message the user can read, such as a notification. Used when an action cannot be carried out. */
   notify: (message: string) => void;
+  /** Restarts into the downloaded update, unless a session is running. */
+  restartToUpdate: () => RestartResult;
 }
 
 export async function runTrayAction(action: TrayAction, deps: TrayActionDeps): Promise<void> {
@@ -173,6 +189,9 @@ export async function runTrayAction(action: TrayAction, deps: TrayActionDeps): P
       return;
     case 'quit':
       deps.quit();
+      return;
+    case 'restart-update':
+      if (deps.restartToUpdate() === 'session-running') deps.notify(TRAY.updateWaits);
       return;
     case 'end':
       report(await deps.session.end());

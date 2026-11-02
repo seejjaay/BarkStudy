@@ -29,6 +29,10 @@ export const TRAY = {
   deckItem: (name: string, count: number) => `${name} (${count} ${count === 1 ? 'card' : 'cards'})`,
   sounds: 'Sounds',
   volume: 'Volume',
+  restartToUpdate: (version: string) => `Restart to update to ${version}`,
+  updateAfterSession: (version: string) => `Update ${version} is ready (restarts after this session)`,
+  updateReady: (version: string) => `BarkStudy ${version} is ready. Restart from the tray menu when you are done.`,
+  updateWaits: 'The update waits until your session ends.',
   open: 'Open BarkStudy',
   quit: 'Quit BarkStudy',
 

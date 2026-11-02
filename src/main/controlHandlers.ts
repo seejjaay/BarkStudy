@@ -14,6 +14,7 @@ import {
   type SettingsView,
   type StartRequest,
   type UndoToken,
+  type UpdaterView,
 } from '../shared/control';
 import { TRAIT_PRESETS } from '../engine/tuning';
 import { isAccelerator, sameAccelerator } from '../shared/accelerator';
@@ -26,6 +27,7 @@ import type { Library } from './library';
 import { MAX_DECK_NAME } from './library';
 import { resolveLink } from './links';
 import type { SessionController } from './session';
+import type { RestartResult } from './updater';
 
 /**
  * The renderer is not trusted to send well-formed requests, so every operation checks its own arguments before
@@ -66,6 +68,8 @@ export interface PlatformAccess {
   /** Makes the dog follow the reduced-motion setting now. */
   applyReducedMotion: (mode: Settings['reducedMotion']) => void;
   version: string;
+  /** The updater: `changed` after the update settings changed or were swapped, `restart` into a downloaded version. */
+  updates: { view: () => UpdaterView; changed: () => void; restart: () => RestartResult };
   /** Opens a folder in Explorer. Resolves to an error message, or an empty string on success (Electron's `shell.openPath`). */
   openPath: (path: string) => Promise<string>;
   /** Called once the stored settings have been replaced wholesale (restore or reset): re-bind the shortcuts, reduced motion and tray from them. */
@@ -215,7 +219,19 @@ export function createControlHandlers(opts: ControlHandlerOptions): ControlHandl
   async function updateSettings(patch: SettingsPatch): Promise<unknown> {
     const r = await library.updateSettings(patch);
     if (r.ok && patch.reducedMotion !== undefined) platform.applyReducedMotion(r.value.reducedMotion);
+    if (r.ok && (patch.updateChecks !== undefined || patch.betaChannel !== undefined)) platform.updates.changed();
     return r;
+  }
+
+  function restartUpdate(): unknown {
+    switch (platform.updates.restart()) {
+      case 'ok':
+        return { ok: true, value: undefined };
+      case 'session-running':
+        return fail('session-running', 'a study session is running, so the update waits until it ends');
+      case 'not-ready':
+        return fail('not-found', 'there is no downloaded update to restart into');
+    }
   }
 
   /** Binds the new shortcut before saving it, so one that cannot be bound is never stored; a failed save puts the old one back. */
@@ -240,7 +256,7 @@ export function createControlHandlers(opts: ControlHandlerOptions): ControlHandl
   }
 
   function settingsView(): SettingsView {
-    return { settings: library.getSettings(), loginItem: platform.loginItem.get(), openApps: platform.openApps(), dataDir: platform.dataDir };
+    return { settings: library.getSettings(), loginItem: platform.loginItem.get(), openApps: platform.openApps(), dataDir: platform.dataDir, update: platform.updates.view() };
   }
 
   /** The bundle the user last previewed; `diagnostics:copy` writes this, so what is copied is what was read. */
@@ -403,6 +419,8 @@ export function createControlHandlers(opts: ControlHandlerOptions): ControlHandl
           return a && (a['which'] === 'leaveIt' || a['which'] === 'bubble') && typeof a['accelerator'] === 'string' ? setHotkey(a['which'], a['accelerator']) : bad();
         case 'settings:login-item':
           return a && typeof a['on'] === 'boolean' ? setLoginItem(a['on']) : bad();
+        case 'update:restart':
+          return restartUpdate();
         case 'data:open-folder':
           return openDataFolder();
         case 'data:export-all':

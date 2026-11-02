@@ -40,7 +40,7 @@ const input = (over: Partial<DiagnosticsInput> = {}): DiagnosticsInput => ({
     { width: 2560, height: 1440, scale: 1 },
   ],
   settings: { ...DEFAULT_SETTINGS, excludedApps: ['secret-game.exe', 'private-notes.exe', 'zoom.exe'] },
-  state: { trackerDown: false, leaveItConflict: true, batterySaver: false, phase: 'idle' },
+  state: { trackerDown: false, leaveItConflict: true, batterySaver: false, phase: 'idle', update: 'idle' },
   crashes: { count: 2, newest: Date.UTC(2026, 9, 30, 12, 0, 0) },
   problems: ['write failed: disk full', 'tracker hiccup'],
   engine: sessionLog(),

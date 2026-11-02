@@ -32,7 +32,7 @@ const files: FileAccess = {
 };
 // The settings operations have their own tests (settingsOps.test.ts); these are the quiet defaults.
 const quiet = {
-  platform: { loginItem: { get: () => ({ available: false, on: false }), set: () => undefined }, openApps: () => [], dataDir: 'C:/data', openLink: () => undefined, applyReducedMotion: () => undefined, version: '1.2.3', openPath: () => Promise.resolve(''), afterReplace: () => undefined, setPractice: () => undefined, diagnostics: () => sampleDiagnosticsInput(), copyText: () => Promise.resolve() },
+  platform: { loginItem: { get: () => ({ available: false, on: false }), set: () => undefined }, updates: { view: () => ({ state: 'idle' as const, version: null }), changed: () => undefined, restart: () => 'not-ready' as const }, openApps: () => [], dataDir: 'C:/data', openLink: () => undefined, applyReducedMotion: () => undefined, version: '1.2.3', openPath: () => Promise.resolve(''), afterReplace: () => undefined, setPractice: () => undefined, diagnostics: () => sampleDiagnosticsInput(), copyText: () => Promise.resolve() },
   hotkeys: { leaveIt: { rebind: () => true }, bubble: { rebind: () => true } },
 };
 const call = <T = unknown>(op: string, args?: unknown) => h.handle(op, args) as Promise<T>;
@@ -55,7 +55,7 @@ beforeEach(async () => {
     library: lib,
     session,
     files,
-    status: () => ({ trackerDown, batterySaver: false, leaveItConflict: leaveItConflict, leaveItLabel: 'Ctrl+Alt+L' }),
+    status: () => ({ trackerDown, batterySaver: false, leaveItConflict: leaveItConflict, leaveItLabel: 'Ctrl+Alt+L', update: { state: 'idle', version: null } }),
     ...quiet,
   });
 });
@@ -215,7 +215,7 @@ describe('export', () => {
   it('cancelling the save dialog is a quiet success', async () => {
     const d = ok(await lib.importAsNewDeck('X', 'a,b'));
     const files2: FileAccess = { ...files, saveExport: () => Promise.resolve(null) };
-    const h2 = createControlHandlers({ library: lib, session, files: files2, status: () => ({ trackerDown: false, batterySaver: false, leaveItConflict: false, leaveItLabel: 'Ctrl+Alt+L' }), ...quiet });
+    const h2 = createControlHandlers({ library: lib, session, files: files2, status: () => ({ trackerDown: false, batterySaver: false, leaveItConflict: false, leaveItLabel: 'Ctrl+Alt+L', update: { state: 'idle', version: null } }), ...quiet });
     expect(await h2.handle('deck:export', { id: d.deckId })).toEqual({ ok: true, value: null });
   });
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { Cap } from '../../engine/types';
 import { acceleratorLabel } from '../../shared/accelerator';
-import type { Result, SettingsPatch, SettingsView } from '../../shared/control';
+import type { Result, SettingsPatch, SettingsView, UpdaterView } from '../../shared/control';
 import { COMMON as C, SETTINGS as T } from '../../shared/i18n/en';
 import { DEFAULT_EXCLUDED_APPS, type Settings } from '../../shared/settings';
 import { api, attempt, describe } from './api';
@@ -10,10 +10,29 @@ import { HotkeyField, RadioCards } from './formParts';
 import { CAP_OPTIONS, MOTION_OPTIONS, PRESET_OPTIONS, addExcluded, commitOnce, createCommitGuard, parseInterval, volumePercent } from './settingsModel';
 import { useToast } from './toast';
 
+/** The update status as a sentence; every state has its own words, so it is never carried by colour. */
+function updateLine(u: UpdaterView): string {
+  switch (u.state) {
+    case 'unavailable':
+      return T.update.unavailable;
+    case 'off':
+      return T.update.off;
+    case 'idle':
+      return T.update.idle;
+    case 'checking':
+      return T.update.checking;
+    case 'downloading':
+      return T.update.downloading(u.version ?? '');
+    case 'ready':
+      return T.update.ready(u.version ?? '');
+  }
+}
+
 type Save = (patch: SettingsPatch, message?: string) => Promise<boolean>;
 
-export function SettingsPage({ reloadKey, onDataChanged }: { reloadKey: number; onDataChanged: () => void }) {
+export function SettingsPage({ reloadKey, sessionRunning, onDataChanged }: { reloadKey: number; sessionRunning: boolean; onDataChanged: () => void }) {
   const toast = useToast();
+  const updateWaitsId = useId();
   const [view, setView] = useState<SettingsView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -59,6 +78,11 @@ export function SettingsPage({ reloadKey, onDataChanged }: { reloadKey: number; 
     }
     setView((v) => (v ? { ...v, loginItem: r.value } : v));
     toast(on ? T.loginOn : T.loginOff);
+  }
+
+  async function restartToUpdate(): Promise<void> {
+    const r = await attempt(api.call('update:restart', undefined));
+    if (!r.ok) toast(r.error.code === 'session-running' ? T.update.waits : T.update.restartFailed, { kind: 'error' });
   }
 
   if (loadError !== null) {
@@ -150,6 +174,21 @@ export function SettingsPage({ reloadKey, onDataChanged }: { reloadKey: number; 
           {T.betaVersions}
         </label>
         <p className="hint">{T.updatesNote}</p>
+        <p className="hint" role="status">
+          {updateLine(view.update)}
+        </p>
+        {view.update.state === 'ready' && (
+          <>
+            <button type="button" className="btn" disabled={sessionRunning} aria-describedby={sessionRunning ? updateWaitsId : undefined} onClick={() => void restartToUpdate()}>
+              {T.update.restart}
+            </button>
+            {sessionRunning && (
+              <p className="hint" id={updateWaitsId}>
+                {T.update.waits}
+              </p>
+            )}
+          </>
+        )}
       </section>
 
       <DataSection dataDir={view.dataDir} onDataChanged={onDataChanged} />

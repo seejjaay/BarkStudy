@@ -44,6 +44,7 @@ const inputs = (over: Partial<TrayInputs> = {}): TrayInputs => ({
   batterySaver: false,
   soundOn: true,
   volume: 0.4,
+  update: { state: 'idle', version: null },
   ...over,
 });
 const flat = (items: MenuItemSpec[]): MenuItemSpec[] => items.flatMap((i) => [i, ...(i.submenu ? flat(i.submenu) : [])]);
@@ -237,6 +238,7 @@ describe('runTrayAction', () => {
     const calls: string[] = [];
     const notify = vi.fn();
     const deps: TrayActionDeps = {
+      restartToUpdate: () => 'ok',
       session: {
         start: vi.fn((req: StartRequest) => {
           calls.push(`start:${req.deckId}:${req.checkinMinMinutes}-${req.checkinMaxMinutes}:${JSON.stringify(req.topic)}`);
@@ -316,6 +318,44 @@ describe('runTrayAction', () => {
     const { deps, notify } = setup();
     await runTrayAction({ kind: 'pause' }, deps);
     expect(notify).not.toHaveBeenCalled();
+  });
+});
+
+describe('the update item', () => {
+  const ready = { state: 'ready' as const, version: '0.2.0' };
+  const running = (paused = false) => ({ phase: 'running', paused } as unknown as TrayInputs['view']);
+
+  it('shows nothing until an update is downloaded', () => {
+    for (const state of ['unavailable', 'off', 'idle', 'checking', 'downloading'] as const) {
+      expect(labels(buildTrayMenu(inputs({ update: { state, version: '0.2.0' } }))).some((l) => /update/i.test(l ?? ''))).toBe(false);
+    }
+  });
+
+  it('offers Restart to update when one is ready and no session runs', () => {
+    const item = flat(buildTrayMenu(inputs({ update: ready }))).find((i) => i.id === 'restart-update');
+    expect(item?.label).toContain('0.2.0');
+    expect(item?.enabled).not.toBe(false);
+  });
+
+  it('during a session the item says it waits, and cannot be clicked', () => {
+    const items = flat(buildTrayMenu(inputs({ update: ready, view: running() })));
+    expect(items.find((i) => i.id === 'restart-update')).toBeUndefined();
+    const waiting = items.find((i) => /after this session/.test(i.label));
+    expect(waiting?.enabled).toBe(false);
+    expect(waiting?.id).toBeUndefined();
+  });
+
+  it('the id reads back as the restart action', () => {
+    expect(parseTrayAction('restart-update')).toEqual({ kind: 'restart-update' });
+  });
+
+  it('running it restarts, and if a session is running it says the update waits instead', async () => {
+    const calls: string[] = [];
+    const base = { session: {}, library: {}, openControl: () => undefined, quit: () => undefined } as unknown as TrayActionDeps;
+    await runTrayAction({ kind: 'restart-update' }, { ...base, notify: (m) => void calls.push(m), restartToUpdate: () => 'ok' });
+    expect(calls).toEqual([]);
+    await runTrayAction({ kind: 'restart-update' }, { ...base, notify: (m) => void calls.push(m), restartToUpdate: () => 'session-running' });
+    expect(calls).toHaveLength(1);
   });
 });
 
