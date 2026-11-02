@@ -152,7 +152,7 @@ export interface LibrarySnapshot {
 /** The settings that `settings:update` may change. Shortcuts have their own operation (they must be bound first) and `onboarded` is set by finishing onboarding. */
 export type SettingsPatch = Partial<Omit<Settings, 'leaveItHotkey' | 'bubbleHotkey' | 'onboarded'>>;
 
-export type LinkId = 'repo' | 'releases' | 'license' | 'new-issue';
+export type LinkId = 'repo' | 'releases' | 'license' | 'privacy' | 'new-issue';
 
 export interface LoginItemState {
   /** False where start-with-Windows is not offered (a development run, not the installed app). */

@@ -15,6 +15,7 @@ describe('the link allowlist', () => {
   it('resolves only its own ids', () => {
     expect(resolveLink('repo')).toBe(LINKS.repo);
     expect(resolveLink('releases')).toBe(LINKS.releases);
+    expect(resolveLink('privacy')).toBe('https://github.com/seejjaay/BarkStudy/blob/main/PRIVACY.md');
     for (const bad of ['evil', '', '__proto__', 'constructor', 'toString', undefined, null, 5, {}, ['repo']]) {
       expect(resolveLink(bad)).toBeNull();
     }
