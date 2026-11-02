@@ -44,8 +44,10 @@ function layout() {
 }
 
 /**
- * Flips one byte inside the app.asar header of a throwaway copy and expects the exe to refuse to start. Electron's embedded
- * integrity check hashes the archive header (the file table), not the file data, so the byte has to be in the header.
+ * Renames one LICENSE or README entry in the app.asar header of a throwaway copy and expects the exe to refuse to start.
+ * Electron's embedded integrity check hashes the archive header (the file table), not the file data, so the change has to
+ * be in the header. It also has to keep the header valid JSON and leave startup alone (nothing reads a LICENSE), or the
+ * app would fail to load with or without the fuse and the check would prove nothing.
  */
 async function tamper() {
   const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'barkstudy-tamper-'));
@@ -53,11 +55,17 @@ async function tamper() {
     fs.cpSync(unpacked, copy, { recursive: true });
     const asar = path.join(copy, 'resources', 'app.asar');
     const fd = fs.openSync(asar, 'r+');
-    const at = 24; // the asar header is JSON starting at byte 16
-    const b = Buffer.alloc(1);
-    fs.readSync(fd, b, 0, 1, at);
-    b[0] ^= 0xff;
-    fs.writeSync(fd, b, 0, 1, at);
+    const head = Buffer.alloc(16);
+    fs.readSync(fd, head, 0, 16, 0);
+    const json = Buffer.alloc(head.readUInt32LE(12)); // the header JSON's length; it starts at byte 16
+    fs.readSync(fd, json, 0, json.length, 16);
+    const key = ['"LICENSE"', '"LICENSE.md"', '"README.md"'].map((k) => json.indexOf(Buffer.from(k))).find((i) => i >= 0);
+    if (key === undefined) {
+      fs.closeSync(fd);
+      report(false, 'no LICENSE or README entry in the asar header to rename for the tamper check');
+      return;
+    }
+    fs.writeSync(fd, Buffer.from('X'), 0, 1, 16 + key + 1); // "LICENSE" -> "XICENSE": still valid JSON, never read
     fs.closeSync(fd);
 
     const child = spawn(path.join(copy, 'BarkStudy.exe'), [], { stdio: 'ignore' });

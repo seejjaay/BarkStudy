@@ -26,10 +26,20 @@ describe('the packaging config repeats them', () => {
     expect(/^productName: (\S+)$/m.exec(yml)?.[1]).toBe(PRODUCT_NAME);
   });
 
-  it('the uninstaller can only ever delete the pinned data folder', () => {
+  it('the uninstaller deletes only the pinned data folder and the updater cache named in the build', () => {
     const nsh = read('build/installer.nsh');
     const deletes = nsh.split('\n').filter((l) => /RMDir/.test(l) && !l.trim().startsWith(';'));
-    expect(deletes).toHaveLength(1);
-    expect(deletes[0]).toContain('"$APPDATA\\' + USER_DATA_NAME + '"');
+    expect(deletes).toHaveLength(2);
+    expect(deletes.filter((l) => l.includes('"$APPDATA\\' + USER_DATA_NAME + '"'))).toHaveLength(1);
+    // electron-builder names the cache "<package name>-updater" (updaterCacheDirName in app-update.yml).
+    const pkg = JSON.parse(read('package.json')) as { name: string };
+    expect(deletes.filter((l) => l.includes('"$LOCALAPPDATA\\' + pkg.name + '-updater"'))).toHaveLength(1);
+  });
+
+  it('only the data folder is behind the question; the updater cache holds no user data', () => {
+    const nsh = read('build/installer.nsh');
+    const ask = nsh.indexOf('MessageBox');
+    expect(nsh.indexOf('RMDir /r "$APPDATA\\' + USER_DATA_NAME + '"')).toBeGreaterThan(ask);
+    expect(nsh.indexOf('RMDir /r "$LOCALAPPDATA\\')).toBeLessThan(ask);
   });
 });

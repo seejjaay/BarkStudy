@@ -105,6 +105,15 @@ function serve(dir) {
     console.log(`FAIL  BarkStudy is already installed (${installDir}) or running. Quit and uninstall it first; this script will not overwrite it.`);
     process.exit(1);
   }
+  // The installed app reads the real settings: with update checks off it would never look, and the wait would just time out.
+  try {
+    if (JSON.parse(fs.readFileSync(path.join(userData, 'data', 'settings.json'), 'utf8')).data?.updateChecks === false) {
+      console.log('FAIL  "Check for updates" is off in your BarkStudy settings, so the installed app would never look. Turn it on and run again.');
+      process.exit(1);
+    }
+  } catch {
+    // no settings yet: the defaults have checks on
+  }
 
   const backup = fs.mkdtempSync(path.join(os.tmpdir(), 'barkstudy-dryrun-backup-'));
   for (const name of keep) if (fs.existsSync(path.join(userData, name))) fs.cpSync(path.join(userData, name), path.join(backup, name), { recursive: true });
@@ -124,6 +133,7 @@ function serve(dir) {
 
     step('Serve 0.1.1 and install 0.1.0');
     server = await serve(b);
+    const logStart = logText().length;
     execFileSync(path.join(a, 'BarkStudy-Setup-0.1.0.exe'), ['/S'], { stdio: 'inherit' });
     installed = true;
     report(fs.existsSync(installedExe), 'a silent per-user install put BarkStudy.exe under Programs');
@@ -133,7 +143,12 @@ function serve(dir) {
     report(await waitFor('the app to start', 30_000, running), 'BarkStudy 0.1.0 is running');
 
     step('Wait for the update check (30 s after launch) and the download');
-    report(await waitFor('the download', 240_000, () => logText().includes('update 0.1.1 downloaded')), 'the app found 0.1.1 and downloaded it (see the updater lines in app.log)');
+    // Only this run's lines count: an app.log from an earlier run already says it downloaded.
+    const downloaded = () => {
+      const text = logText();
+      return (text.length >= logStart ? text.slice(logStart) : text).includes('update 0.1.1 downloaded');
+    };
+    report(await waitFor('the download', 240_000, downloaded), 'the app found 0.1.1 and downloaded it (see the updater lines in app.log)');
 
     step('PERSON NEEDED: open the tray menu (bottom right, maybe under ^) and click "Restart to update to 0.1.1"');
     console.log('   Also worth a look first: start a session, and the item should read "...restarts after this session" and not click.');
