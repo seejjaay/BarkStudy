@@ -272,6 +272,17 @@ export const OP_NAMES: readonly OpName[] = [
   'onboarding:finish',
 ];
 
+/**
+ * Where the updater is. `unavailable`: not the installed app, or the updater could not start. `off`: the person turned
+ * checks off. `ready`: a newer version is downloaded and waits for a restart.
+ */
+export type UpdaterState = 'unavailable' | 'off' | 'idle' | 'checking' | 'downloading' | 'ready';
+export interface UpdaterView {
+  state: UpdaterState;
+  /** The newer version, while it downloads or waits. */
+  version: string | null;
+}
+
 export interface AppStatus {
   trackerDown: boolean;
   /** Windows battery saver is on, so Pandesal naps instead of roaming. */
