@@ -64,12 +64,13 @@ describe('reading and writing', () => {
     expect(onDisk().data).toEqual({ items: ['keep'] });
   });
 
+  // 50 serialized real fsyncs: slow when a full run has dozens of workers hitting the disk, so it gets more than the default 5 s.
   it('50 concurrent writes end with the last one and leave no temp files', async () => {
     const s = storage();
     await Promise.all(Array.from({ length: 50 }, (_, i) => s.write(toyV1, { items: [`w${i}`] })));
     expect(onDisk().data).toEqual({ items: ['w49'] });
     expect(fs.readdirSync(dir).filter((f) => f.endsWith('.tmp'))).toEqual([]);
-  });
+  }, 20_000);
 });
 
 describe('crash safety', () => {
