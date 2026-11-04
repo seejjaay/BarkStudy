@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.1](https://github.com/seejjaay/BarkStudy/compare/v0.2.0...v0.2.1) (2026-11-04)
+
+
+### Bug fixes
+
+* **overlay:** wag Pandesal's tail from the rump end when sitting ([bc5f4d6](https://github.com/seejjaay/BarkStudy/commit/bc5f4d68a79da467f6d217bc3ff5900b8714ea04))
+
+
+### Documentation
+
+* **release:** record the main branch ruleset ([5da8d61](https://github.com/seejjaay/BarkStudy/commit/5da8d61df9c21e6d621d98c34f86b6f35e971b1e))
+* **release:** record the repo settings the release flow depends on ([16a157e](https://github.com/seejjaay/BarkStudy/commit/16a157e602e5e5c57228635552413698c720de3b))
+
 ## [0.2.0](https://github.com/seejjaay/BarkStudy/compare/v0.1.0...v0.2.0) (2026-11-02)
 
 
