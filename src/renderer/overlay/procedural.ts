@@ -182,7 +182,8 @@ function sitting(ctx: Ctx, p: Parts): void {
   if (tall) leg(ctx, 6, -16, 16);
   blob(ctx, FUR, -4, -18, 18, 10, tall ? -0.85 : -0.5);
   blob(ctx, DARK, -12, -8, 8, 7);
-  tail(ctx, -24, -10, 0.9, p.wag);
+  // Leaning out from the haunch (0.9 - π, not 0.9), so it wags about the end at his rump rather than its tip.
+  tail(ctx, -24, -10, 0.9 - Math.PI, p.wag);
   head(ctx, 11, tall ? -38 : -33, p.look);
 }
 
